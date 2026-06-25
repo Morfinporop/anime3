@@ -63,8 +63,8 @@ export default function AdminPage({ onClose }: { onClose: () => void }) {
         <>
           <p className="text-xs text-zinc-500 mb-2">Всего: {users.length}</p>
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Поиск по нику или ID..." className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm outline-none focus:border-zinc-400 mb-3" />
-          <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-            <table className="w-full text-sm"><thead className="border-b border-zinc-200 bg-zinc-50"><tr className="text-left text-xs font-bold uppercase tracking-wider text-zinc-500"><th className="px-3 py-2.5">Пользователь</th><th className="hidden px-3 py-2.5 sm:table-cell">ID</th><th className="px-3 py-2.5">Права</th><th className="px-3 py-2.5 text-right">Действия</th></tr></thead>
+          <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+            <table className="w-full min-w-[500px] text-sm"><thead className="border-b border-zinc-200 bg-zinc-50"><tr className="text-left text-xs font-bold uppercase tracking-wider text-zinc-500"><th className="px-3 py-2.5">Пользователь</th><th className="hidden px-3 py-2.5 sm:table-cell">ID</th><th className="px-3 py-2.5">Права</th><th className="px-3 py-2.5 text-right">Действия</th></tr></thead>
               <tbody>
                 {filteredUsers.map(u => (
                   <tr key={u.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50/50">

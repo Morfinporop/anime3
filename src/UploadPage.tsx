@@ -3,7 +3,7 @@ import { Upload as UploadIcon, X, AlertTriangle, Film, ImageIcon } from 'lucide-
 import { useUser } from './UserContext';
 import { useNotify } from './NotifyContext';
 
-const MAX_VIDEO_SIZE = 550 * 1024 * 1024;
+const MAX_VIDEO_SIZE = 350 * 1024 * 1024;
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
 interface ProgressData {
@@ -196,7 +196,7 @@ export default function UploadPage({ onClose }: { onClose: () => void; onWatch?:
                 {posterPreview ? <img src={posterPreview} alt="" className="h-full w-full object-cover" /> :
                   <div className="flex flex-col items-center gap-1"><ImageIcon className="h-5 w-5" /><span className="text-[10px] font-medium">Постер</span></div>}
                 <input type="file" accept="image/*" onChange={handlePosterFile} className="absolute inset-0 cursor-pointer opacity-0" /></label></div>
-            <div><label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Видео * (макс 550 МБ)</label>
+            <div><label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Видео * (макс 350 МБ)</label>
               <label className="mt-1 group relative flex h-32 cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 text-zinc-500 transition-colors hover:border-zinc-900 hover:bg-white">
                 {videoFile ? <div className="flex flex-col items-center gap-1 px-2 text-center"><Film className="h-5 w-5 text-zinc-900" /><div className="text-[10px] font-semibold text-zinc-900 truncate max-w-[120px]">{videoFile.name}</div><div className="text-[9px] text-zinc-500">{(videoFile.size / 1024 / 1024).toFixed(1)} МБ</div></div> :
                   <div className="flex flex-col items-center gap-1"><UploadIcon className="h-5 w-5" /><span className="text-[10px] font-medium">Видеофайл</span></div>}

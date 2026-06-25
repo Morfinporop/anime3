@@ -6,6 +6,11 @@ import App from "./App";
 import { UserProvider } from "./UserContext";
 import { NotifyProvider } from "./NotifyContext";
 
+// Turnstile global callback
+(window as any).turnstileCallback = (token: string) => {
+  (window as any).turnstileToken = token;
+};
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>

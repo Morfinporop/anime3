@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Eye, EyeOff, X, LogOut, Search as SearchIcon } from 'lucide-react';
-import { Turnstile } from '@marsidev/react-turnstile';
 import { useUser } from './UserContext';
 import { useNotify } from './NotifyContext';
 import { api } from './api';
@@ -89,9 +88,10 @@ function RegisterModal({ onClose, onSwitchToLogin }: { onClose: () => void; onSw
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [turnstileToken, setTurnstileToken] = useState('');
 
   const handleRegister = async () => {
+    const token = (window as any).turnstileToken || '';
+    if (!token) { notify.error('Пройдите проверку'); return; }
     if (!nickname.trim() || !password.trim()) { notify.error('Заполните никнейм и пароль'); return; }
     if (password.trim().length < 3) { notify.error('Пароль должен быть минимум 3 символа'); return; }
     setLoading(true);
@@ -129,12 +129,8 @@ function RegisterModal({ onClose, onSwitchToLogin }: { onClose: () => void; onSw
           </div>
         </div>
       </div>
-      {!turnstileToken && (
-        <div className="mt-3 flex justify-center">
-          <Turnstile siteKey="0x4AAAAAADq22Lhd_1fjLeeF" onSuccess={(token) => setTurnstileToken(token)} />
-        </div>
-      )}
-      <button onClick={handleRegister} disabled={!nickname.trim() || !password.trim() || loading || !turnstileToken}
+      <div className="cf-turnstile mt-3 flex justify-center" data-sitekey="0x4AAAAAADq22Lhd_1fjLeeF" data-callback="turnstileCallback"></div>
+      <button onClick={handleRegister} disabled={!nickname.trim() || !password.trim() || loading}
         className="mt-5 w-full rounded-full bg-zinc-900 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-40">
         {loading ? 'Создание...' : 'Создать аккаунт'}
       </button>

@@ -20,8 +20,8 @@ const distPath = candidates.find(p => fs.existsSync(p)) || candidates[0];
 console.log('[Server] PORT:', PORT);
 console.log('[Server] distPath:', distPath, 'exists:', fs.existsSync(distPath));
 
-app.use(express.json({ limit: '600mb' }));
-app.use(express.urlencoded({ extended: true, limit: '600mb' }));
+app.use(express.json({ limit: '400mb' }));
+app.use(express.urlencoded({ extended: true, limit: '400mb' }));
 app.use(cookieParser());
 
 app.use((req, res, next) => {
