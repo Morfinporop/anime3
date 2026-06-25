@@ -5,6 +5,7 @@ import { useNotify } from './NotifyContext';
 import { api } from './api';
 import UploadPage from './UploadPage';
 import AdminPage from './AdminPage';
+import BotCheck from './BotCheck';
 
 // Простая модалка без блюра — оптимизированная
 function ModalShell({ onClose, title, subtitle, children }: {
@@ -88,26 +89,10 @@ function RegisterModal({ onClose, onSwitchToLogin }: { onClose: () => void; onSw
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  // Reset Turnstile when modal opens
-  useEffect(() => {
-    const tid = setTimeout(() => {
-      const el = document.querySelector('.cf-turnstile-reg');
-      if (el && (window as any).turnstile) {
-        (window as any).turnstile.remove(el);
-        (window as any).turnstile.render(el, {
-          sitekey: '0x4AAAAAADq22Lhd_1fjLeeF',
-          callback: (token: string) => { (window as any).registerToken = token; },
-          'expired-callback': () => { (window as any).registerToken = ''; },
-        });
-      }
-    }, 200);
-    return () => clearTimeout(tid);
-  }, []);
+  const [botToken, setBotToken] = useState('');
 
   const handleRegister = async () => {
-    const token = (window as any).registerToken || '';
-    if (!token) { notify.error('Пройдите проверку Cloudflare'); return; }
+    if (!botToken) { notify.error('Пройдите проверку на бота'); return; }
     if (!nickname.trim() || !password.trim()) { notify.error('Заполните никнейм и пароль'); return; }
     if (password.trim().length < 3) { notify.error('Пароль должен быть минимум 3 символа'); return; }
     setLoading(true);
@@ -145,8 +130,10 @@ function RegisterModal({ onClose, onSwitchToLogin }: { onClose: () => void; onSw
           </div>
         </div>
       </div>
-      <div className="cf-turnstile-reg mt-3 flex justify-center"></div>
-      <button onClick={handleRegister} disabled={!nickname.trim() || !password.trim() || loading}
+      <div className="bg-white rounded-xl border border-zinc-200 p-4 mt-3">
+        <BotCheck onVerify={(t) => setBotToken(t)} />
+      </div>
+      <button onClick={handleRegister} disabled={!nickname.trim() || !password.trim() || loading || !botToken}
         className="mt-5 w-full rounded-full bg-zinc-900 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-40">
         {loading ? 'Создание...' : 'Создать аккаунт'}
       </button>
