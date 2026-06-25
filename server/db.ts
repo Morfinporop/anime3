@@ -76,6 +76,13 @@ export async function initDB() {
   await query(`CREATE INDEX IF NOT EXISTS idx_anime_created ON anime(created_at DESC)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_anime_pinned ON anime(pinned DESC, created_at DESC)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_comment_likes_c ON comment_likes(comment_id)`);
+
+  // Add missing columns for existing DBs
+  try { await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data TEXT`); } catch {}
+  try { await query(`ALTER TABLE anime ADD COLUMN IF NOT EXISTS hls_segments TEXT`); } catch {}
+  try { await query(`ALTER TABLE anime ADD COLUMN IF NOT EXISTS studio VARCHAR(100) NOT NULL DEFAULT ''`); } catch {}
+  try { await query(`ALTER TABLE anime ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE`); } catch {}
+  try { await query(`CREATE INDEX IF NOT EXISTS idx_anime_pinned ON anime(pinned DESC, created_at DESC)`); } catch {}
 }
 
 export default pool;
