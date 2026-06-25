@@ -5,6 +5,10 @@ import {
   requireAuth, requireAdmin, requireUploadPermission, optionalAuth,
   type UserPayload,
 } from './auth.ts';
+import { execSync, spawn } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 export const router = Router();
 
@@ -115,7 +119,8 @@ router.get('/anime', async (_req, res) => {
              COALESCE(AVG(r.score), 0) as rating,
              COUNT(DISTINCT r.id) as rating_count,
              CASE WHEN a.poster_data IS NOT NULL THEN true ELSE false END as has_poster,
-             CASE WHEN a.video_data IS NOT NULL THEN true ELSE false END as has_video
+             CASE WHEN a.video_data IS NOT NULL THEN true ELSE false END as has_video,
+             CASE WHEN a.hls_segments IS NOT NULL THEN true ELSE false END as has_hls
       FROM anime a
       LEFT JOIN ratings r ON r.anime_id = a.id
       GROUP BY a.id
@@ -132,7 +137,7 @@ router.get('/anime', async (_req, res) => {
       rating: Math.round(Number(r.rating) * 10) / 10,
       ratingCount: Number(r.rating_count),
       image: r.has_poster ? `/api/files/anime/${r.id}/poster` : '',
-      videoSrc: r.has_video ? `/api/files/anime/${r.id}/video` : '',
+      videoSrc: r.has_hls ? `/api/files/anime/${r.id}/hls/master.m3u8` : (r.has_video ? `/api/files/anime/${r.id}/video` : ''),
       createdAt: r.created_at,
     }));
     res.json(items);
@@ -166,7 +171,7 @@ router.get('/anime/:id', async (req, res) => {
       views: r.views_count,
       rating: Math.round(Number(r.rating) * 10) / 10,
       image: r.poster_data ? `/api/files/anime/${r.id}/poster` : '',
-      videoSrc: r.video_data ? `/api/files/anime/${r.id}/video` : '',
+      videoSrc: r.hls_segments ? `/api/files/anime/${r.id}/hls/master.m3u8` : (r.video_data ? `/api/files/anime/${r.id}/video` : ''),
     });
   } catch (err: any) {
     console.error('[anime detail]', err.message);
@@ -174,38 +179,139 @@ router.get('/anime/:id', async (req, res) => {
   }
 });
 
+// SSE helper
+function sseEvent(res: any, event: string, data: any) {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
 router.post('/anime', requireAuth, requireUploadPermission, async (req, res) => {
+  // SSE streaming response for progress
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': req.headers.origin || '*',
+    'Access-Control-Allow-Credentials': 'true',
+  });
+
   try {
     const { title, description, year, genres, poster, video } = req.body;
-    if (!title) return res.status(400).json({ error: 'Название обязательно' });
+    if (!title) { sseEvent(res, 'error', { error: 'Название обязательно' }); res.end(); return; }
+    if (!video?.data) { sseEvent(res, 'error', { error: 'Видео обязательно' }); res.end(); return; }
+
+    sseEvent(res, 'progress', { stage: 'decode', percent: 5, text: 'Декодирование видео...' });
 
     const genresArray = genres 
       ? String(genres).split(',').map((g: string) => g.trim()).filter(Boolean)
       : [];
 
-    let posterData = null, posterMime = null;
+    // Decode poster from base64
+    let posterData: Buffer | null = null, posterMime: string | null = null;
     if (poster?.data && poster?.mime) {
       posterData = Buffer.from(poster.data, 'base64');
       posterMime = poster.mime;
+      sseEvent(res, 'progress', { stage: 'poster', percent: 10, text: 'Постер обработан' });
     }
 
-    let videoData = null, videoMime = null;
-    if (video?.data && video?.mime) {
-      videoData = Buffer.from(video.data, 'base64');
-      videoMime = video.mime;
+    // Decode video from base64 -> temp file
+    sseEvent(res, 'progress', { stage: 'decode', percent: 15, text: 'Распаковка видео...' });
+    const videoBuffer = Buffer.from(video.data, 'base64');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aw-'));
+    const inputPath = path.join(tmpDir, 'input' + (video.mime === 'video/mp4' ? '.mp4' : '.mkv'));
+    fs.writeFileSync(inputPath, videoBuffer);
+
+    sseEvent(res, 'progress', { stage: 'decode', percent: 30, text: 'Видео распаковано, размер: ' + (videoBuffer.length / 1024 / 1024).toFixed(1) + ' МБ' });
+
+    // Compress with ffmpeg: create HLS output with multiple qualities
+    const outputDir = path.join(tmpDir, 'hls');
+    fs.mkdirSync(outputDir);
+
+    sseEvent(res, 'progress', { stage: 'compress', percent: 35, text: 'Запуск компрессии FFmpeg...' });
+
+    // Build ffmpeg command for 2 quality levels (1080p + 144p) to HLS
+    const masterPath = path.join(outputDir, 'master.m3u8');
+    const args = [
+      '-y',
+      '-i', inputPath,
+      '-preset', 'ultrafast',
+      '-crf', '28',
+      '-map', '0:v', '-map', '0:a',
+      '-s:v:0', '1920x1080', '-b:v:0', '2000k',
+      '-map', '0:v', '-map', '0:a',
+      '-s:v:1', '256x144', '-b:v:1', '150k',
+      '-f', 'hls',
+      '-hls_time', '6',
+      '-hls_playlist_type', 'vod',
+      '-hls_segment_filename', path.join(outputDir, 'q%d_%03d.ts'),
+      '-var_stream_map', 'v:0,a:0 v:1,a:1',
+      path.join(outputDir, 'q%d.m3u8'),
+    ];
+
+    // Spawn ffmpeg
+    const ffmpeg = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let lastPercent = 35;
+
+    ffmpeg.stderr.on('data', (chunk: Buffer) => {
+      const text = chunk.toString();
+      // Parse ffmpeg time progress
+      const timeMatch = text.match(/time=(\d+):(\d+):(\d+\.\d+)/);
+      if (timeMatch) {
+        const hours = parseInt(timeMatch[1]);
+        const minutes = parseInt(timeMatch[2]);
+        const seconds = parseFloat(timeMatch[3]);
+        const totalSec = hours * 3600 + minutes * 60 + seconds;
+        // Estimate progress based on video duration (roughly 3s per second of video = 33% of ffmpeg phase)
+        const newPercent = 35 + Math.min(55, Math.round(totalSec * 2));
+        if (newPercent > lastPercent) {
+          lastPercent = newPercent;
+          sseEvent(res, 'progress', { stage: 'compress', percent: Math.min(90, lastPercent), text: 'Компрессия: ' + formatFFTime(hours, minutes, Math.floor(seconds)) });
+        }
+      }
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      ffmpeg.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error('FFmpeg exit code: ' + code));
+      });
+      ffmpeg.on('error', reject);
+    });
+
+    sseEvent(res, 'progress', { stage: 'compress', percent: 90, text: 'Компрессия завершена, сохранение в БД...' });
+
+    // Read master playlist + all ts segments + sub-playlists
+    const files = fs.readdirSync(outputDir);
+    const dbFiles: { name: string; data: Buffer; mime: string }[] = [];
+    for (const f of files) {
+      dbFiles.push({
+        name: f,
+        data: fs.readFileSync(path.join(outputDir, f)),
+        mime: f.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp2t',
+      });
     }
+
+    sseEvent(res, 'progress', { stage: 'save', percent: 93, text: 'Сохранение в базу данных...' });
+
+    // Store everything: poster, master playlist, segments
+    const segmentsJson = dbFiles.map(f => ({ name: f.name, data: f.data.toString('base64'), mime: f.mime }));
 
     const { rows } = await query(
-      `INSERT INTO anime (title, description, year, genres, poster_data, poster_mime, video_data, video_mime, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO anime (title, description, year, genres, poster_data, poster_mime, hls_segments, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id`,
-      [title, description || '', Number(year) || new Date().getFullYear(), genresArray, posterData, posterMime, videoData, videoMime, req.user!.id]
+      [title, description || '', Number(year) || new Date().getFullYear(), genresArray, posterData, posterMime, JSON.stringify(segmentsJson), req.user!.id]
     );
 
-    res.json({ id: rows[0].id });
+    // Cleanup temp
+    try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
+
+    sseEvent(res, 'progress', { stage: 'done', percent: 100, text: 'Готово!' });
+    sseEvent(res, 'complete', { id: rows[0].id });
+    res.end();
   } catch (err: any) {
     console.error('[create anime]', err.message);
-    res.status(500).json({ error: 'Ошибка сервера' });
+    sseEvent(res, 'error', { error: err.message || 'Ошибка сервера' });
+    res.end();
   }
 });
 
@@ -235,6 +341,50 @@ router.get('/files/anime/:id/poster', async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.send(anime.poster_data);
   } catch (err: any) {
+    console.error('[get poster]', err.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// HLS: serve master.m3u8 or segment .ts
+router.get('/files/anime/:id/hls/:file', async (req, res) => {
+  try {
+    const { rows } = await query(
+      `SELECT hls_segments FROM anime WHERE id = $1`,
+      [req.params.id]
+    );
+    const anime = rows[0];
+    if (!anime?.hls_segments) {
+      return res.status(404).json({ error: 'HLS данные не найдены' });
+    }
+
+    const segments = JSON.parse(anime.hls_segments);
+    const file = segments.find((s: any) => s.name === req.params.file);
+    if (!file) {
+      return res.status(404).json({ error: 'Файл не найден' });
+    }
+
+    const buf = Buffer.from(file.data, 'base64');
+    res.setHeader('Content-Type', file.mime);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(buf);
+  } catch (err: any) {
+    console.error('[get hls]', err.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+router.get('/files/anime/:id/video', async (req, res) => {
+  try {
+    const { rows } = await query(
+      `SELECT video_data, video_mime FROM anime WHERE id = $1`,
+      [req.params.id]
+    );
+    const anime = rows[0];
+    if (!anime?.video_data) {
+      return res.status(404).json({ error: 'Видео не найдено' });
+    }
     console.error('[get poster]', err.message);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
@@ -557,6 +707,10 @@ router.get('/health', async (_req, res) => {
     res.status(503).json({ status: 'error', db: 'disconnected' });
   }
 });
+
+function formatFFTime(h: number, m: number, s: number): string {
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
 
 function formatDate(date: Date): string {
   const now = new Date();

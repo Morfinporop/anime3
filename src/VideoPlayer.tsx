@@ -43,6 +43,14 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
   const [showCenterButton, setShowCenterButton] = useState(false);
   const centerTimerRef = useRef<number | null>(null);
 
+  // Seek preview
+  const [seekPreview, setSeekPreview] = useState({ visible: false, x: 0, time: 0 });
+  const seekBarRef = useRef<HTMLDivElement>(null);
+
+  // Volume drag
+  const isDraggingVolume = useRef(false);
+  const volumeBarRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => { onEndedRef.current = onEnded; }, [onEnded]);
 
   const flashCenterButton = useCallback(() => {
@@ -62,7 +70,6 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-
     if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
     setLoading(true);
     setError(null);
@@ -88,7 +95,6 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
       hlsRef.current = hls;
       hls.loadSource(videoSrc);
       hls.attachMedia(video);
-
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         const qs: { label: string; index: number }[] = [{ label: 'Авто', index: -1 }];
         hls.levels.forEach((level, i) => {
@@ -100,7 +106,6 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
         setLoading(false);
         video.play().catch(() => {});
       });
-
       hls.on(Hls.Events.ERROR, (_ev, data) => {
         if (data.fatal) { setError('Ошибка HLS потока'); setLoading(false); hls.destroy(); hlsRef.current = null; }
       });
@@ -110,7 +115,6 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
       video.addEventListener('canplay', () => setLoading(false), { once: true });
       setTimeout(() => video.play().catch(() => {}), 100);
     }
-
     return () => {
       video.removeEventListener('loadedmetadata', onMeta);
       video.removeEventListener('timeupdate', onTime);
@@ -124,15 +128,14 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
 
   const switchQuality = (index: number) => {
     setCurrentQuality(index);
-    if (hlsRef.current) {
-      hlsRef.current.currentLevel = index;
-    }
+    if (hlsRef.current) hlsRef.current.currentLevel = index;
     setShowSettings(false);
   };
 
   useEffect(() => { if (videoRef.current) videoRef.current.playbackRate = speed; }, [speed]);
   useEffect(() => { const v = videoRef.current; if (v) { v.volume = volume; v.muted = muted; } }, [volume, muted]);
 
+  // Keyboard
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName; if (tag === 'INPUT' || tag === 'TEXTAREA') return;
@@ -158,13 +161,55 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
 
   const togglePlay = () => { const v = videoRef.current; if (!v) return; v.paused ? v.play().catch(() => {}) : v.pause(); };
 
-  const seekBarRef = useRef<HTMLDivElement>(null);
-  const onSeekClick = (e: React.MouseEvent) => {
-    const v = videoRef.current; const bar = seekBarRef.current; if (!v || !v.duration || !bar) return;
+  // Seek: click + drag with preview
+  const applySeek = (clientX: number) => {
+    const v = videoRef.current; const bar = seekBarRef.current;
+    if (!v || !v.duration || !bar) return;
     const rect = bar.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     v.currentTime = v.duration * pct;
     setPosition(v.currentTime);
+  };
+
+  const onSeekMouseDown = (e: React.MouseEvent) => {
+    applySeek(e.clientX);
+    document.addEventListener('mousemove', onSeekDrag);
+    document.addEventListener('mouseup', onSeekDragEnd);
+  };
+  const onSeekDrag = (e: MouseEvent) => { applySeek(e.clientX); };
+  const onSeekDragEnd = () => {
+    document.removeEventListener('mousemove', onSeekDrag);
+    document.removeEventListener('mouseup', onSeekDragEnd);
+  };
+
+  // Seek preview on hover
+  const onSeekHover = (e: React.MouseEvent) => {
+    const bar = seekBarRef.current; const v = videoRef.current;
+    if (!bar || !v || !v.duration) return;
+    const rect = bar.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    setSeekPreview({ visible: true, x: e.clientX - rect.left, time: v.duration * pct });
+  };
+
+  // Volume drag
+  const applyVolume = (clientX: number) => {
+    const bar = volumeBarRef.current;
+    if (!bar) return;
+    const rect = bar.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    setVolume(pct); setMuted(false);
+  };
+  const onVolumeMouseDown = (e: React.MouseEvent) => {
+    isDraggingVolume.current = true;
+    applyVolume(e.clientX);
+    document.addEventListener('mousemove', onVolumeDrag);
+    document.addEventListener('mouseup', onVolumeDragEnd);
+  };
+  const onVolumeDrag = (e: MouseEvent) => { if (isDraggingVolume.current) applyVolume(e.clientX); };
+  const onVolumeDragEnd = () => {
+    isDraggingVolume.current = false;
+    document.removeEventListener('mousemove', onVolumeDrag);
+    document.removeEventListener('mouseup', onVolumeDragEnd);
   };
 
   const showUI = controlsVisible || !playing;
@@ -206,7 +251,19 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
       )}
 
       <div className={`absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/95 via-black/50 to-transparent px-3 pb-2 pt-12 transition-opacity duration-200 sm:px-4 ${showUI ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
-        <div ref={seekBarRef} className="relative flex items-center cursor-pointer py-1.5" onClick={onSeekClick}>
+        {/* Seek bar with preview */}
+        <div ref={seekBarRef} className="relative flex items-center cursor-pointer py-2"
+          onMouseDown={onSeekMouseDown}
+          onMouseMove={onSeekHover}
+          onMouseLeave={() => setSeekPreview({ visible: false, x: 0, time: 0 })}>
+          {/* Preview tooltip */}
+          {seekPreview.visible && (
+            <div className="absolute z-30 -translate-x-1/2 pointer-events-none" style={{ left: seekPreview.x, bottom: '22px' }}>
+              <div className="bg-black/90 text-white text-xs font-mono px-2 py-1 rounded-md shadow-lg whitespace-nowrap">
+                {formatTime(seekPreview.time)}
+              </div>
+            </div>
+          )}
           <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[6px] rounded-full bg-white/20">
             <div className="absolute inset-y-0 left-0 rounded-full bg-white" style={{ width: `${progressPct}%` }} />
           </div>
@@ -223,8 +280,8 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
             <button onClick={() => setMuted(m => !m)} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/15">
               {muted || volume === 0 ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
             </button>
-            <div className="relative ml-1 w-16 sm:w-20 h-5 flex items-center cursor-pointer"
-              onClick={(e) => { const rect = e.currentTarget.getBoundingClientRect(); const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)); setVolume(pct); setMuted(false); }}>
+            <div ref={volumeBarRef} className="relative ml-1 w-16 sm:w-20 h-5 flex items-center cursor-pointer"
+              onMouseDown={onVolumeMouseDown}>
               <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[6px] rounded-full bg-white/20">
                 <div className="absolute inset-y-0 left-0 rounded-full bg-white" style={{ width: `${(muted ? 0 : volume) * 100}%` }} />
               </div>

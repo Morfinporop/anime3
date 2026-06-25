@@ -35,6 +35,7 @@ export async function initDB() {
     poster_mime VARCHAR(50),
     video_data BYTEA,
     video_mime VARCHAR(50),
+    hls_segments TEXT,
     genres TEXT[] NOT NULL DEFAULT '{}',
     year INT NOT NULL DEFAULT 2024,
     views_count INT NOT NULL DEFAULT 0,

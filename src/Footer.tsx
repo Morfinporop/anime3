@@ -4,7 +4,7 @@ export default function Footer() {
       <div className="mx-auto max-w-[1400px] px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <a
-            href="https://discord.gg/animeworld"
+            href="https://discord.gg/fZXn6vjUFb"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 rounded-full bg-[#5865F2] px-4 py-2 text-xs font-medium text-white hover:bg-[#4752c4] transition-colors"
