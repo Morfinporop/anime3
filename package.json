@@ -6,10 +6,10 @@
   "scripts": {
     "dev": "vite",
     "dev:server": "tsx watch server/index.ts",
-    "build": "vite build && tsc -p tsconfig.server.json",
+    "build": "vite build",
     "preview": "vite preview",
-    "start": "node dist-server/index.js",
-    "start:prod": "node dist-server/index.js"
+    "start": "tsx server/index.ts",
+    "start:prod": "tsx server/index.ts"
   },
   "dependencies": {
     "@types/bcryptjs": "^2.4.6",
