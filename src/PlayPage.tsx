@@ -236,20 +236,16 @@ export default function PlayPage({ data, onBack }: {
     <div className="min-h-screen bg-zinc-50">
       <Header />
       <div className="mx-auto w-full max-w-[1600px]">
-        <div className="lg:px-16 xl:px-32">
-          <VideoPlayer videoSrc={data.videoSrc} poster={data.image} title={data.title}
+        <VideoPlayer videoSrc={data.videoSrc} poster={data.image} title={data.title}
             onEnded={() => { try { api.addView(data.id); } catch {} }} />
-        </div>
         <div className="px-4 pb-12 sm:px-6">
           <div className="mt-4">
             <h1 className="text-xl font-bold text-zinc-900 sm:text-2xl">{data.title}</h1>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {data.genres.map((g) => (
-                <span key={g} className="text-sm text-zinc-500">{g}</span>
+                <span key={g} className="rounded-full bg-blue-500/15 text-blue-600 px-2.5 py-0.5 text-[11px] font-medium">{g}</span>
               ))}
-              <span className="text-zinc-300">·</span>
-              <span className="text-sm text-zinc-500">{data.year}</span>
-              <span className="text-zinc-300">·</span>
+              <span className="rounded-full bg-blue-500/15 text-blue-600 px-2.5 py-0.5 text-[11px] font-medium">{data.year}</span>
               <span className="text-sm text-zinc-500">{formatViews(data.views)}</span>
               <span className="text-zinc-300">·</span>
               <span className="text-sm font-semibold text-zinc-500">★ {displayRating > 0 ? `${displayRating}/10` : '0/10'}</span>

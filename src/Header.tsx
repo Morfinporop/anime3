@@ -255,7 +255,7 @@ export default function Header({ onSelectAnime }: { onSelectAnime?: (anime: any)
       <header className="sticky top-0 z-40 border-b border-zinc-200 bg-white">
         <div className="mx-auto flex max-w-[1400px] items-center justify-between px-4 py-2 sm:px-6 gap-3">
           <a href="/" className="flex items-center gap-2 flex-shrink-0">
-            <img src="/images/logov.png" alt="AnimeWorld" className="h-8 w-8" />
+            <img src="/images/logov.svg" alt="AnimeWorld" className="h-8 w-8" />
             <span className="text-lg font-bold text-zinc-900 tracking-tight hidden sm:inline">AnimeWorld</span>
           </a>
 
