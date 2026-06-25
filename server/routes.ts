@@ -385,21 +385,6 @@ router.get('/files/anime/:id/video', async (req, res) => {
     if (!anime?.video_data) {
       return res.status(404).json({ error: 'Видео не найдено' });
     }
-    console.error('[get poster]', err.message);
-    res.status(500).json({ error: 'Ошибка сервера' });
-  }
-});
-
-router.get('/files/anime/:id/video', async (req, res) => {
-  try {
-    const { rows } = await query(
-      `SELECT video_data, video_mime FROM anime WHERE id = $1`,
-      [req.params.id]
-    );
-    const anime = rows[0];
-    if (!anime?.video_data) {
-      return res.status(404).json({ error: 'Видео не найдено' });
-    }
     
     const videoBuffer = anime.video_data;
     const videoSize = videoBuffer.length;
