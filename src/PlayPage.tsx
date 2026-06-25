@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { ThumbsUp, ChevronDown, ChevronUp, Send, Star, Trash2 } from 'lucide-react';
 import VideoPlayer from './VideoPlayer';
 import Header from './Header';
+import Footer from './Footer';
 import type { AnimeData, CommentData } from './types';
 import { useUser, type User } from './UserContext';
 import { useNotify } from './NotifyContext';
@@ -233,10 +234,10 @@ export default function PlayPage({ data, onBack }: {
   onBack;
 
   return (
-    <div className="min-h-screen bg-zinc-50">
+    <div className="min-h-screen bg-zinc-50 flex flex-col">
       <Header />
-      <div className="mx-auto w-full max-w-[1600px]">
-        <VideoPlayer videoSrc={data.videoSrc} poster={data.image} title={data.title}
+      <div className="flex-1 mx-auto w-full max-w-[1600px]">
+        <VideoPlayer videoSrc={data.videoSrc} poster={data.image}
             onEnded={() => { try { api.addView(data.id); } catch {} }} />
         <div className="px-4 pb-12 sm:px-6">
           <div className="mt-4">
@@ -289,6 +290,7 @@ export default function PlayPage({ data, onBack }: {
           </div>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

@@ -232,6 +232,7 @@ router.get('/files/anime/:id/poster', async (req, res) => {
     }
     res.setHeader('Content-Type', anime.poster_mime || 'image/jpeg');
     res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
     res.send(anime.poster_data);
   } catch (err: any) {
     console.error('[get poster]', err.message);
@@ -265,6 +266,8 @@ router.get('/files/anime/:id/video', async (req, res) => {
         'Accept-Ranges': 'bytes',
         'Content-Length': chunkSize,
         'Content-Type': anime.video_mime || 'video/mp4',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': '*',
       });
       res.end(videoBuffer.slice(start, end + 1));
     } else {
@@ -272,6 +275,8 @@ router.get('/files/anime/:id/video', async (req, res) => {
         'Content-Length': videoSize,
         'Content-Type': anime.video_mime || 'video/mp4',
         'Accept-Ranges': 'bytes',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': '*',
       });
       res.end(videoBuffer);
     }

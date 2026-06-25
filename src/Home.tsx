@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import Card, { CardRow, type CardData } from './Card';
 import PlayPage from './PlayPage';
 import Header from './Header';
+import Footer from './Footer';
 import type { AnimeData, CommentData } from './types';
 import { api } from './api';
 
@@ -158,6 +159,7 @@ export default function HomePage() {
               </div>
             )}
       </section>
+      <Footer />
     </div>
   );
 }
