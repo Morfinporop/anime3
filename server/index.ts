@@ -15,7 +15,6 @@ const __dirname = path.dirname(__filename);
 const candidates = [
   path.resolve(process.cwd(), 'dist'),
   path.resolve(__dirname, '..', 'dist'),
-  path.resolve('dist'),
 ];
 const distPath = candidates.find(p => fs.existsSync(p)) || candidates[0];
 console.log('[Server] PORT:', PORT);
@@ -42,11 +41,12 @@ app.use('/api', router);
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
   const indexPath = path.join(distPath, 'index.html');
-  app.get('*', (_req, res) => {
+  // Express 5: wildcard syntax is {*path} not *
+  app.get('{*path}', (_req, res) => {
     if (fs.existsSync(indexPath)) {
       res.sendFile(indexPath);
     } else {
-      res.status(404).send('index.html not found');
+      res.status(404).send('not found');
     }
   });
 }
