@@ -96,7 +96,9 @@ export default function UploadPage({ onClose }: { onClose: () => void; onWatch?:
         const errText = await resp.text();
         let errMsg = `Ошибка ${resp.status}`;
         try { const d = JSON.parse(errText); errMsg = d.error || errMsg; } catch {}
-        throw new Error(errMsg);
+        notify.error(errMsg);
+        setUploading(false);
+        return;
       }
 
       // Read SSE stream

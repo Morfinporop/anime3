@@ -188,7 +188,6 @@ router.get('/anime', async (_req, res) => {
       pinned: r.pinned || false,
       image: r.has_poster ? `/api/files/anime/${r.id}/poster` : '',
       videoSrc: r.has_video ? `/api/files/anime/${r.id}/video` : '',
-      createdAt: r.created_at,
     }));
     res.json(items);
   } catch (err: any) {
@@ -582,13 +581,14 @@ router.post('/anime/:id/view', async (req, res) => {
 router.get('/admin/users', requireAuth, requireAdmin, async (_req, res) => {
   try {
     const { rows } = await query(
-      `SELECT id, username, avatar_color, is_admin, can_upload, created_at 
+      `SELECT id, username, avatar_color, avatar_data, is_admin, can_upload, created_at 
        FROM users ORDER BY created_at DESC`
     );
     res.json(rows.map(u => ({
       id: u.id,
       nickname: u.username,
       color: u.avatar_color,
+      avatarData: u.avatar_data || null,
       isAdmin: u.is_admin,
       canUpload: u.can_upload,
     })));
