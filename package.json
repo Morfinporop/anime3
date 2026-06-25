@@ -12,6 +12,7 @@
     "start:prod": "tsx server/index.ts"
   },
   "dependencies": {
+    "@marsidev/react-turnstile": "^1.5.3",
     "@types/bcryptjs": "^2.4.6",
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.6",

@@ -358,6 +358,11 @@ router.post('/anime', requireAuth, requireUploadPermission, async (req, res) => 
       sseEvent(res, 'complete', { id: insRows[0].id });
       res.end();
     }
+  } catch (err: any) {
+    console.error('[create anime outer]', err.message);
+    try { sseEvent(res, 'error', { error: 'Ошибка сервера' }); } catch {}
+    res.end();
+  }
 });
 
 router.put('/anime/:id/pin', requireAuth, requireAdmin, async (req, res) => {

@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
 import Home from './Home';
 import ErrorScreen from './ErrorScreen';
+import CookieBanner from './CookieBanner';
 import { useUser } from './UserContext';
 
 export default function App() {
@@ -11,9 +12,12 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/video/:id" element={<Home />} />
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/video/:id" element={<Home />} />
+      </Routes>
+      <CookieBanner />
+    </>
   );
 }
