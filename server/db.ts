@@ -1,100 +1,76 @@
 import pg from 'pg';
-
 const { Pool } = pg;
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  max: 10,
-  idleTimeoutMillis: 30000,
+  ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false,
+  max: 5,
   connectionTimeoutMillis: 10000,
 });
 
 export async function query(text: string, params?: any[]) {
-  const client = await pool.connect();
-  try {
-    const result = await client.query(text, params);
-    return result;
-  } finally {
-    client.release();
-  }
+  return pool.query(text, params);
+}
+
+export async function checkHealth(): Promise<boolean> {
+  try { await pool.query('SELECT 1'); return true; } catch { return false; }
 }
 
 export async function initDB() {
-  await query(`
-    CREATE TABLE IF NOT EXISTS users (
-      id SERIAL PRIMARY KEY,
-      username VARCHAR(32) UNIQUE NOT NULL,
-      password_hash VARCHAR(120) NOT NULL,
-      avatar_color VARCHAR(16) NOT NULL DEFAULT '#6366f1',
-      is_admin BOOLEAN NOT NULL DEFAULT FALSE,
-      can_upload BOOLEAN NOT NULL DEFAULT FALSE,
-      created_at TIMESTAMP DEFAULT NOW()
-    );
-  `);
+  await query(`CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(32) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    avatar_color VARCHAR(16) NOT NULL DEFAULT '#6366f1',
+    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+    can_upload BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW()
+  )`);
 
-  await query(`
-    CREATE TABLE IF NOT EXISTS anime (
-      id SERIAL PRIMARY KEY,
-      title VARCHAR(200) NOT NULL,
-      description TEXT NOT NULL DEFAULT '',
-      poster_data BYTEA,
-      poster_mime VARCHAR(50),
-      video_data BYTEA,
-      video_mime VARCHAR(50),
-      genres TEXT[] NOT NULL DEFAULT '{}',
-      year INT NOT NULL DEFAULT 2024,
-      views_count INT NOT NULL DEFAULT 0,
-      created_by INT REFERENCES users(id) ON DELETE SET NULL,
-      created_at TIMESTAMP DEFAULT NOW()
-    );
-  `);
+  await query(`CREATE TABLE IF NOT EXISTS anime (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    poster_data BYTEA,
+    poster_mime VARCHAR(50),
+    video_data BYTEA,
+    video_mime VARCHAR(50),
+    genres TEXT[] NOT NULL DEFAULT '{}',
+    year INT NOT NULL DEFAULT 2024,
+    views_count INT NOT NULL DEFAULT 0,
+    created_by INT REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+  )`);
 
-  await query(`
-    CREATE TABLE IF NOT EXISTS ratings (
-      id SERIAL PRIMARY KEY,
-      user_id INT REFERENCES users(id) ON DELETE CASCADE,
-      anime_id INT REFERENCES anime(id) ON DELETE CASCADE,
-      score SMALLINT NOT NULL CHECK (score >= 1 AND score <= 10),
-      created_at TIMESTAMP DEFAULT NOW(),
-      UNIQUE(user_id, anime_id)
-    );
-  `);
+  await query(`CREATE TABLE IF NOT EXISTS ratings (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    anime_id INT NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
+    score SMALLINT NOT NULL CHECK (score >= 1 AND score <= 10),
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(user_id, anime_id)
+  )`);
 
-  await query(`
-    CREATE TABLE IF NOT EXISTS comments (
-      id SERIAL PRIMARY KEY,
-      anime_id INT REFERENCES anime(id) ON DELETE CASCADE,
-      user_id INT REFERENCES users(id) ON DELETE CASCADE,
-      parent_id INT REFERENCES comments(id) ON DELETE CASCADE,
-      text TEXT NOT NULL,
-      created_at TIMESTAMP DEFAULT NOW()
-    );
-  `);
+  await query(`CREATE TABLE IF NOT EXISTS comments (
+    id SERIAL PRIMARY KEY,
+    anime_id INT REFERENCES anime(id) ON DELETE CASCADE,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    parent_id INT REFERENCES comments(id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+  )`);
 
-  await query(`
-    CREATE TABLE IF NOT EXISTS comment_likes (
-      user_id INT REFERENCES users(id) ON DELETE CASCADE,
-      comment_id INT REFERENCES comments(id) ON DELETE CASCADE,
-      created_at TIMESTAMP DEFAULT NOW(),
-      PRIMARY KEY (user_id, comment_id)
-    );
-  `);
+  await query(`CREATE TABLE IF NOT EXISTS comment_likes (
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    comment_id INT NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (user_id, comment_id)
+  )`);
 
-  await query(`CREATE INDEX IF NOT EXISTS idx_comments_anime ON comments(anime_id, created_at DESC);`);
-  await query(`CREATE INDEX IF NOT EXISTS idx_ratings_anime ON ratings(anime_id);`);
-  await query(`CREATE INDEX IF NOT EXISTS idx_anime_created ON anime(created_at DESC);`);
-  await query(`CREATE INDEX IF NOT EXISTS idx_comment_likes_c ON comment_likes(comment_id);`);
-}
-
-// Health check
-export async function checkHealth(): Promise<boolean> {
-  try {
-    await pool.query('SELECT 1');
-    return true;
-  } catch {
-    return false;
-  }
+  await query(`CREATE INDEX IF NOT EXISTS idx_comments_anime ON comments(anime_id, created_at DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_ratings_anime ON ratings(anime_id)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_anime_created ON anime(created_at DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_comment_likes_c ON comment_likes(comment_id)`);
 }
 
 export default pool;

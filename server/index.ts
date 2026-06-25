@@ -7,29 +7,24 @@ import { initDB } from './db.ts';
 import { router } from './routes.ts';
 
 const app = express();
-const PORT = parseInt(process.env.PORT || '3000');
+const PORT = parseInt(process.env.PORT || '8080');
 
-// Определяем путь к dist
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Пробуем несколько вариантов пути к dist
 const candidates = [
-  path.resolve('dist'),
-  path.resolve(__dirname, '..', 'dist'),
   path.resolve(process.cwd(), 'dist'),
+  path.resolve(__dirname, '..', 'dist'),
+  path.resolve('dist'),
 ];
-let distPath = candidates.find(p => fs.existsSync(p)) || candidates[0];
-console.log('[Server] CWD:', process.cwd());
-console.log('[Server] __dirname:', __dirname);
+const distPath = candidates.find(p => fs.existsSync(p)) || candidates[0];
+console.log('[Server] PORT:', PORT);
 console.log('[Server] distPath:', distPath, 'exists:', fs.existsSync(distPath));
 
-// Middleware
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(cookieParser());
 
-// CORS
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin) {
@@ -42,14 +37,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// API routes
 app.use('/api', router);
 
-// Serve static files from dist
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
-  
-  // SPA fallback — все остальные маршруты → index.html
   const indexPath = path.join(distPath, 'index.html');
   app.get('*', (_req, res) => {
     if (fs.existsSync(indexPath)) {
@@ -58,17 +49,12 @@ if (fs.existsSync(distPath)) {
       res.status(404).send('index.html not found');
     }
   });
-} else {
-  app.get('*', (_req, res) => {
-    res.status(503).json({ error: 'Frontend not built' });
-  });
 }
 
-// Запускаем сервер сразу, БД инициализируем асинхронно
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`[Server] Listening on 0.0.0.0:${PORT}`);
 });
 
 initDB()
-  .then(() => console.log('[Server] DB initialized successfully'))
-  .catch((err) => console.error('[Server] DB init error:', err.message));
+  .then(() => console.log('[Server] DB ready'))
+  .catch((e) => console.error('[Server] DB error:', e.message));
