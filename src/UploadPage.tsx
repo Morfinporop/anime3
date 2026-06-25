@@ -1,13 +1,13 @@
 import { useState } from 'react';
-import { Upload as UploadIcon, X, CheckCircle2, Film, AlertTriangle, ImageIcon } from 'lucide-react';
+import { Upload as UploadIcon, X, AlertTriangle, Film, ImageIcon } from 'lucide-react';
 import { useUser } from './UserContext';
 import { useNotify } from './NotifyContext';
-import { api, uploadWithProgress } from './api';
+import { api } from './api';
 
-const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100MB для base64
+const MAX_VIDEO_SIZE = 550 * 1024 * 1024;
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
-export default function UploadPage({ onClose, onWatch }: { onClose: () => void; onWatch?: (cardId: number) => void }) {
+export default function UploadPage({ onClose }: { onClose: () => void; onWatch?: (cardId: number) => void }) {
   const { user } = useUser();
   const notify = useNotify();
 
@@ -15,17 +15,12 @@ export default function UploadPage({ onClose, onWatch }: { onClose: () => void; 
   const [description, setDescription] = useState('');
   const [year, setYear] = useState(new Date().getFullYear());
   const [genres, setGenres] = useState('');
-  
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [posterPreview, setPosterPreview] = useState('');
   const [videoFile, setVideoFile] = useState<File | null>(null);
-  
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [progressText, setProgressText] = useState('');
+  const [uploadStage, setUploadStage] = useState('');
   const [error, setError] = useState('');
-  const [done, setDone] = useState(false);
-  const [doneId, setDoneId] = useState<number | null>(null);
 
   if (!user) {
     return (
@@ -42,10 +37,7 @@ export default function UploadPage({ onClose, onWatch }: { onClose: () => void; 
   const handlePosterFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    if (f.size > MAX_IMAGE_SIZE) {
-      setError('Постер слишком большой. Максимум 5 МБ.');
-      return;
-    }
+    if (f.size > MAX_IMAGE_SIZE) { setError('Постер слишком большой. Максимум 5 МБ.'); return; }
     setPosterFile(f);
     const reader = new FileReader();
     reader.onload = () => setPosterPreview(reader.result as string);
@@ -55,12 +47,21 @@ export default function UploadPage({ onClose, onWatch }: { onClose: () => void; 
   const handleVideoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    if (f.size > MAX_VIDEO_SIZE) {
-      setError('Видео слишком большое. Максимум 100 МБ.');
-      return;
-    }
+    if (f.size > MAX_VIDEO_SIZE) { setError('Видео слишком большое. Максимум 550 МБ.'); return; }
     setError('');
     setVideoFile(f);
+  };
+
+  const readFileAsBase64 = (file: File): Promise<{ data: string; mime: string }> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(',')[1];
+        resolve({ data: base64, mime: file.type });
+      };
+      reader.onerror = () => reject(new Error('Ошибка чтения файла'));
+      reader.readAsDataURL(file);
+    });
   };
 
   const handleUpload = async () => {
@@ -69,70 +70,29 @@ export default function UploadPage({ onClose, onWatch }: { onClose: () => void; 
     if (!videoFile) { setError('Выберите видеофайл'); return; }
 
     setUploading(true);
-    setProgress(0);
 
     try {
-      // Upload poster
-      let posterData: { data: string; mime: string } | undefined;
-      if (posterFile) {
-        setProgressText('Загрузка постера...');
-        posterData = await uploadWithProgress(posterFile, (p) => setProgress(Math.round(p * 0.2)));
-      }
+      setUploadStage('Чтение постера...');
+      const poster = posterFile ? await readFileAsBase64(posterFile) : undefined;
 
-      // Upload video
-      setProgressText('Загрузка видео...');
-      const videoData = await uploadWithProgress(videoFile, (p) => setProgress(20 + Math.round(p * 0.7)));
+      setUploadStage('Чтение видео...');
+      const video = await readFileAsBase64(videoFile);
 
-      // Send to server
-      setProgressText('Сохранение...');
-      setProgress(90);
-      
-      const result = await api.uploadAnime({
-        title: title.trim(),
-        description,
-        year,
-        genres,
-        poster: posterData,
-        video: videoData,
+      setUploadStage('Отправка на сервер...');
+      await api.uploadAnime({
+        title: title.trim(), description, year,
+        genres, poster, video,
       });
 
-      setProgress(100);
       setUploading(false);
-      setDone(true);
-      setDoneId(result.id);
       notify.success('Аниме успешно загружено!');
       window.dispatchEvent(new Event('animeworld-cards-updated'));
+      onClose();
     } catch (err: any) {
       setUploading(false);
       setError(err.message || 'Ошибка загрузки');
     }
   };
-
-  if (done) {
-    return (
-      <div className="px-4 py-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-zinc-900">Загрузить аниме</h2>
-          <button onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-100">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="rounded-xl border border-zinc-200 bg-white p-8 text-center">
-          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 text-white">
-            <CheckCircle2 className="h-7 w-7" />
-          </div>
-          <h3 className="text-xl font-bold text-zinc-900">Готово!</h3>
-          <p className="mt-2 text-sm text-zinc-500">{title} добавлен на главную</p>
-          <button 
-            onClick={() => { if (onWatch && doneId) onWatch(doneId); else onClose(); }} 
-            className="mt-5 rounded-full bg-zinc-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800"
-          >
-            Закрыть
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="px-4 py-6">
@@ -149,108 +109,63 @@ export default function UploadPage({ onClose, onWatch }: { onClose: () => void; 
         </div>
       )}
 
-      <div className="rounded-xl border border-zinc-200 bg-white p-5 space-y-3">
-        <div>
-          <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Название *</label>
-          <input 
-            type="text" 
-            value={title} 
-            onChange={(e) => setTitle(e.target.value)} 
-            placeholder="Название аниме" 
-            className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-400" 
-          />
-        </div>
-        
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Год</label>
-            <input 
-              type="number" 
-              value={year} 
-              onChange={(e) => setYear(parseInt(e.target.value) || new Date().getFullYear())} 
-              className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-400" 
-            />
+      {uploading ? (
+        <div className="rounded-xl border border-zinc-200 bg-white p-8 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900" />
           </div>
-          <div>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Жанры</label>
-            <input 
-              type="text" 
-              value={genres} 
-              onChange={(e) => setGenres(e.target.value)} 
-              placeholder="Фэнтези, Драма" 
-              className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-400" 
-            />
-          </div>
+          <h3 className="text-lg font-bold text-zinc-900">Загрузка...</h3>
+          <p className="mt-1 text-sm text-zinc-500">{uploadStage}</p>
+          <p className="mt-3 text-xs text-zinc-400">Это может занять некоторое время</p>
         </div>
-        
-        <div>
-          <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Описание</label>
-          <textarea 
-            value={description} 
-            onChange={(e) => setDescription(e.target.value)} 
-            rows={2} 
-            placeholder="О чём аниме..." 
-            className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-400 resize-none" 
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
+      ) : (
+        <div className="rounded-xl border border-zinc-200 bg-white p-5 space-y-3">
           <div>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Постер (макс 5 МБ)</label>
-            <label className="mt-1 group relative flex h-32 cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 text-zinc-500 transition-colors hover:border-zinc-900 hover:bg-white">
-              {posterPreview ? (
-                <img src={posterPreview} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex flex-col items-center gap-1">
-                  <ImageIcon className="h-5 w-5" />
-                  <span className="text-[10px] font-medium text-center px-1">Постер</span>
-                </div>
-              )}
-              <input type="file" accept="image/*" onChange={handlePosterFile} className="absolute inset-0 cursor-pointer opacity-0" />
-            </label>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Название *</label>
+            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Название аниме"
+              className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-400" />
           </div>
-          <div>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Видео * (макс 100 МБ)</label>
-            <label className="mt-1 group relative flex h-32 cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 text-zinc-500 transition-colors hover:border-zinc-900 hover:bg-white">
-              {videoFile ? (
-                <div className="flex flex-col items-center gap-1 px-2 text-center">
-                  <Film className="h-5 w-5 text-zinc-900" />
-                  <div className="line-clamp-1 text-[10px] font-semibold text-zinc-900 max-w-[120px] truncate">{videoFile.name}</div>
-                  <div className="text-[9px] text-zinc-500">{(videoFile.size / 1024 / 1024).toFixed(1)} МБ</div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center gap-1">
-                  <UploadIcon className="h-5 w-5" />
-                  <span className="text-[10px] font-medium text-center px-1">Видеофайл</span>
-                </div>
-              )}
-              <input type="file" accept="video/*" onChange={handleVideoFile} className="absolute inset-0 cursor-pointer opacity-0" />
-            </label>
-          </div>
-        </div>
-
-        {uploading && (
-          <div className="space-y-2">
-            <div className="h-2 bg-zinc-100 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-zinc-900 transition-all duration-300" 
-                style={{ width: `${progress}%` }} 
-              />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Год</label>
+              <input type="number" value={year} onChange={(e) => setYear(parseInt(e.target.value) || new Date().getFullYear())}
+                className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-400" />
             </div>
-            <p className="text-xs text-zinc-500 text-center">{progressText} {progress}%</p>
+            <div>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Жанры</label>
+              <input type="text" value={genres} onChange={(e) => setGenres(e.target.value)} placeholder="Фэнтези, Драма"
+                className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-400" />
+            </div>
           </div>
-        )}
-
-        <button 
-          onClick={handleUpload} 
-          disabled={uploading || !videoFile || !title.trim()} 
-          className="w-full rounded-full bg-zinc-900 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-40"
-        >
-          {uploading ? 'Загрузка...' : (
-            <span><UploadIcon className="inline h-4 w-4 mr-1.5" /> Загрузить</span>
-          )}
-        </button>
-      </div>
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Описание</label>
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="О чём аниме..."
+              className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-400 resize-none" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Постер (макс 5 МБ)</label>
+              <label className="mt-1 group relative flex h-32 cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 text-zinc-500 transition-colors hover:border-zinc-900 hover:bg-white">
+                {posterPreview ? <img src={posterPreview} alt="" className="h-full w-full object-cover" /> :
+                  <div className="flex flex-col items-center gap-1"><ImageIcon className="h-5 w-5" /><span className="text-[10px] font-medium">Постер</span></div>}
+                <input type="file" accept="image/*" onChange={handlePosterFile} className="absolute inset-0 cursor-pointer opacity-0" />
+              </label>
+            </div>
+            <div>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Видео * (макс 550 МБ)</label>
+              <label className="mt-1 group relative flex h-32 cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 text-zinc-500 transition-colors hover:border-zinc-900 hover:bg-white">
+                {videoFile ? <div className="flex flex-col items-center gap-1 px-2 text-center"><Film className="h-5 w-5 text-zinc-900" /><div className="text-[10px] font-semibold text-zinc-900 truncate max-w-[120px]">{videoFile.name}</div><div className="text-[9px] text-zinc-500">{(videoFile.size / 1024 / 1024).toFixed(1)} МБ</div></div> :
+                  <div className="flex flex-col items-center gap-1"><UploadIcon className="h-5 w-5" /><span className="text-[10px] font-medium">Видеофайл</span></div>}
+                <input type="file" accept="video/*" onChange={handleVideoFile} className="absolute inset-0 cursor-pointer opacity-0" />
+              </label>
+            </div>
+          </div>
+          <button onClick={handleUpload} disabled={uploading || !videoFile || !title.trim()}
+            className="w-full rounded-full bg-zinc-900 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-40">
+            <UploadIcon className="inline h-4 w-4 mr-1.5" /> Загрузить
+          </button>
+        </div>
+      )}
     </div>
   );
 }
