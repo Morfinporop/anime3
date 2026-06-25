@@ -44,8 +44,6 @@ function LoginModal({ onClose, onSwitchToRegister }: { onClose: () => void; onSw
 
   const handleLogin = async () => {
     if (!nickname.trim() || !password.trim()) { notify.error('Заполните никнейм и пароль'); return; }
-    const token = (window as any).loginToken || '';
-    if (!token) { notify.error('Пройдите проверку Cloudflare'); return; }
     setLoading(true);
     const ok = await login(nickname.trim(), password);
     setLoading(false);
@@ -71,7 +69,6 @@ function LoginModal({ onClose, onSwitchToRegister }: { onClose: () => void; onSw
           </div>
         </div>
       </div>
-      <div className="cf-turnstile mt-3 flex justify-center" data-sitekey="0x4AAAAAADq22Lhd_1fjLeeF" data-callback="loginTokenCallback"></div>
       <button onClick={handleLogin} disabled={!nickname.trim() || !password.trim() || loading}
         className="mt-5 w-full rounded-full bg-zinc-900 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-40">
         {loading ? 'Вход...' : 'Войти'}
@@ -91,6 +88,22 @@ function RegisterModal({ onClose, onSwitchToLogin }: { onClose: () => void; onSw
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
+  const turnstileRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (turnstileRef.current) {
+      const id = 'reg-turnstile';
+      turnstileRef.current.id = id;
+      setTimeout(() => {
+        if ((window as any).turnstile) {
+          (window as any).turnstile.render('#' + id, {
+            sitekey: '0x4AAAAAADq22Lhd_1fjLeeF',
+            callback: (token: string) => { (window as any).registerToken = token; },
+          });
+        }
+      }, 100);
+    }
+  }, []);
 
   const handleRegister = async () => {
     const token = (window as any).registerToken || '';
@@ -132,7 +145,7 @@ function RegisterModal({ onClose, onSwitchToLogin }: { onClose: () => void; onSw
           </div>
         </div>
       </div>
-      <div className="cf-turnstile mt-3 flex justify-center" data-sitekey="0x4AAAAAADq22Lhd_1fjLeeF" data-callback="registerTokenCallback"></div>
+      <div ref={turnstileRef} className="mt-3 flex justify-center"></div>
       <button onClick={handleRegister} disabled={!nickname.trim() || !password.trim() || loading}
         className="mt-5 w-full rounded-full bg-zinc-900 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-40">
         {loading ? 'Создание...' : 'Создать аккаунт'}
