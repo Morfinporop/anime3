@@ -6,12 +6,7 @@ import App from "./App";
 import { UserProvider } from "./UserContext";
 import { NotifyProvider } from "./NotifyContext";
 
-// Turnstile global callback
-(window as any).turnstileRender = (el: string, sitekey: string, cb: (token: string) => void) => {
-  if ((window as any).turnstile) {
-    (window as any).turnstile.render(el, { sitekey, callback: cb });
-  }
-};
+
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

@@ -88,21 +88,21 @@ function RegisterModal({ onClose, onSwitchToLogin }: { onClose: () => void; onSw
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
-  const turnstileRef = useRef<HTMLDivElement>(null);
 
+  // Reset Turnstile when modal opens
   useEffect(() => {
-    if (turnstileRef.current) {
-      const id = 'reg-turnstile';
-      turnstileRef.current.id = id;
-      setTimeout(() => {
-        if ((window as any).turnstile) {
-          (window as any).turnstile.render('#' + id, {
-            sitekey: '0x4AAAAAADq22Lhd_1fjLeeF',
-            callback: (token: string) => { (window as any).registerToken = token; },
-          });
-        }
-      }, 100);
-    }
+    const tid = setTimeout(() => {
+      const el = document.querySelector('.cf-turnstile-reg');
+      if (el && (window as any).turnstile) {
+        (window as any).turnstile.remove(el);
+        (window as any).turnstile.render(el, {
+          sitekey: '0x4AAAAAADq22Lhd_1fjLeeF',
+          callback: (token: string) => { (window as any).registerToken = token; },
+          'expired-callback': () => { (window as any).registerToken = ''; },
+        });
+      }
+    }, 200);
+    return () => clearTimeout(tid);
   }, []);
 
   const handleRegister = async () => {
@@ -145,7 +145,7 @@ function RegisterModal({ onClose, onSwitchToLogin }: { onClose: () => void; onSw
           </div>
         </div>
       </div>
-      <div ref={turnstileRef} className="mt-3 flex justify-center"></div>
+      <div className="cf-turnstile-reg mt-3 flex justify-center"></div>
       <button onClick={handleRegister} disabled={!nickname.trim() || !password.trim() || loading}
         className="mt-5 w-full rounded-full bg-zinc-900 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-40">
         {loading ? 'Создание...' : 'Создать аккаунт'}
