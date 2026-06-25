@@ -30,45 +30,28 @@ function Card({ data }: { data: CardData }) {
     const el = ref.current;
     if (!el) return;
     const io = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting) {
-        setVisible(true);
-        io.disconnect();
-      }
+      if (e.isIntersecting) { setVisible(true); io.disconnect(); }
     }, { rootMargin: '400px' });
     io.observe(el);
     return () => io.disconnect();
   }, []);
 
   return (
-    <div
-      ref={ref}
+    <div ref={ref}
       className="w-full overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-md"
-      style={{
-        transform: 'perspective(900px) rotateX(6deg)',
-        transformStyle: 'preserve-3d',
-        contentVisibility: 'auto',
-        containIntrinsicSize: '0 420px',
-        contain: 'paint',
-      }}
-    >
+      style={{ transform: 'perspective(900px) rotateX(6deg)', transformStyle: 'preserve-3d', contentVisibility: 'auto', containIntrinsicSize: '0 420px', contain: 'paint' }}>
       <div className="relative aspect-[2/3] w-full overflow-hidden rounded-t-2xl bg-zinc-100">
         {visible && (
-          <img
-            src={data.image + (data.image.includes('?') ? '&' : '?') + 'w=320&q=70&fm=webp'}
-            alt={data.title}
-            className="h-full w-full object-cover"
-            style={{ transform: 'translateZ(0)', willChange: 'transform' }}
-            loading="lazy"
-            decoding="async"
-            fetchPriority="low"
-          />
+          <img src={data.image + (data.image.includes('?') ? '&' : '?') + 'w=320&q=70&fm=webp'} alt={data.title}
+            className="h-full w-full object-cover" style={{ transform: 'translateZ(0)', willChange: 'transform' }}
+            loading="lazy" decoding="async" fetchPriority="low" />
         )}
         <div className="absolute right-2 top-2">
-          <span className="rounded-full border border-zinc-400/50 bg-zinc-500/40 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm backdrop-blur-md">
-            ★ {data.rating > 0 ? `${data.rating}/10` : '—'}
+          <span className="rounded-full bg-black/50 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm">
+            ★ {data.rating > 0 ? `${data.rating}/10` : '0/10'}
           </span>
         </div>
-        <div className="absolute bottom-2 left-2 max-w-[70%] truncate rounded-full border border-zinc-400/50 bg-zinc-500/40 px-2.5 py-1 text-[10px] font-medium text-white shadow-sm backdrop-blur-md">
+        <div className="absolute bottom-2 left-2 max-w-[70%] truncate rounded-full bg-black/50 px-2.5 py-1 text-[10px] font-medium text-white shadow-sm">
           {formatViews(data.views)}
         </div>
       </div>
@@ -92,35 +75,24 @@ export function CardRow({ data }: { data: CardData }) {
     const el = ref.current;
     if (!el) return;
     const io = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting) {
-        setVisible(true);
-        io.disconnect();
-      }
+      if (e.isIntersecting) { setVisible(true); io.disconnect(); }
     }, { rootMargin: '400px' });
     io.observe(el);
     return () => io.disconnect();
   }, []);
 
   return (
-    <div
-      ref={ref}
+    <div ref={ref}
       className="flex w-full items-center gap-3 overflow-hidden rounded-xl border border-zinc-200 bg-white p-2 shadow-sm"
-      style={{ contentVisibility: 'auto', containIntrinsicSize: '0 96px', contain: 'paint' }}
-    >
+      style={{ contentVisibility: 'auto', containIntrinsicSize: '0 96px', contain: 'paint' }}>
       <div className="relative h-20 w-14 flex-shrink-0 overflow-hidden rounded-lg bg-zinc-100">
         {visible && (
-          <img
-            src={data.image + (data.image.includes('?') ? '&' : '?') + 'w=112&q=70&fm=webp'}
-            alt={data.title}
-            className="h-full w-full object-cover"
-            style={{ transform: 'translateZ(0)' }}
-            loading="lazy"
-            decoding="async"
-            fetchPriority="low"
-          />
+          <img src={data.image + (data.image.includes('?') ? '&' : '?') + 'w=112&q=70&fm=webp'} alt={data.title}
+            className="h-full w-full object-cover" style={{ transform: 'translateZ(0)' }}
+            loading="lazy" decoding="async" fetchPriority="low" />
         )}
-        <span className="absolute right-0.5 top-0.5 rounded-full border border-zinc-400/50 bg-zinc-500/40 px-1.5 py-0.5 text-[8px] font-bold text-white shadow-sm backdrop-blur-md">
-          ★ {data.rating > 0 ? `${data.rating}/10` : '—'}
+        <span className="absolute right-0.5 top-0.5 rounded-full bg-black/50 px-1.5 py-0.5 text-[8px] font-bold text-white shadow-sm">
+          ★ {data.rating > 0 ? `${data.rating}/10` : '0/10'}
         </span>
       </div>
       <div className="min-w-0 flex-1">

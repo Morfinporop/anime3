@@ -15,40 +15,45 @@ const formatViews = (n: number) => {
 
 function UserRating({ rating, onRate, rated }: { rating: number | null; onRate: (r: number) => void; rated: boolean }) {
   const [hovered, setHovered] = useState(0);
-  const done = rated;
+  if (rated) {
+    return (
+      <div className="flex items-center gap-1">
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+          <Star key={n} className={`h-5 w-5 sm:h-6 sm:w-6 ${rating && n <= rating ? 'fill-yellow-400 text-yellow-400' : 'text-zinc-200'}`} />
+        ))}
+        <span className="ml-1 text-sm font-semibold text-zinc-500">{rating ? `${rating}/10` : '0/10'}</span>
+      </div>
+    );
+  }
   return (
     <div className="flex items-center gap-0.5" onMouseLeave={() => setHovered(0)}>
       {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => {
         const filled = hovered ? n <= hovered : rating ? n <= rating : false;
         return (
-          <button key={n}
-            onClick={() => { if (!done) onRate(n); }}
-            onMouseEnter={() => { if (!done) setHovered(n); }}
-            className={`transition-colors ${done ? 'cursor-default' : ''}`}
-            title={done ? 'Оценка уже поставлена' : `${n}/10`}
-          >
+          <button key={n} onClick={() => onRate(n)} onMouseEnter={() => setHovered(n)}
+            className="transition-colors" title={`${n}/10`}>
             <Star className={`h-5 w-5 sm:h-6 sm:w-6 ${filled ? 'fill-yellow-400 text-yellow-400' : 'text-zinc-300 hover:text-yellow-300'}`} />
           </button>
         );
       })}
-      <span className="ml-1 text-sm font-semibold text-zinc-500">
-        {rating !== null ? `${rating}/10` : '0/10'}
-      </span>
+      <span className="ml-1 text-sm font-semibold text-zinc-500">{rating ? `${rating}/10` : '0/10'}</span>
     </div>
   );
 }
 
-function CommentItem({ comment, onLike, onReply, onDelete, user }: {
+function CommentItem({ comment, onLike, onReply, onDelete, user, currentUserId }: {
   comment: CommentData;
   onLike: (id: number) => void;
   onReply: (id: number, text: string) => void;
   onDelete?: (id: number) => void;
   user: User | null;
+  currentUserId?: number;
 }) {
   const [showReplyInput, setShowReplyInput] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [showReplies, setShowReplies] = useState(false);
   const loggedIn = !!user;
+  const isOwner = currentUserId != null && (comment as any).userId === currentUserId;
 
   const handleReply = () => {
     if (!replyText.trim()) return;
@@ -67,7 +72,7 @@ function CommentItem({ comment, onLike, onReply, onDelete, user }: {
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-zinc-800">{comment.author}</span>
             <span className="text-[11px] text-zinc-400">{comment.date}</span>
-            {user?.isAdmin && onDelete && (
+            {(user?.isAdmin || isOwner) && onDelete && (
               <button onClick={() => onDelete(comment.id)} className="ml-auto text-zinc-300 hover:text-red-500" title="Удалить">
                 <Trash2 className="h-3 w-3" />
               </button>
@@ -108,6 +113,11 @@ function CommentItem({ comment, onLike, onReply, onDelete, user }: {
                           style={{ backgroundColor: reply.avatarColor || '#6366f1' }}>{reply.author.charAt(0)}</div>
                         <span className="text-xs font-semibold text-zinc-700">{reply.author}</span>
                         <span className="text-[10px] text-zinc-400">{reply.date}</span>
+                        {(user?.isAdmin || (currentUserId != null && (reply as any).userId === currentUserId)) && onDelete && (
+                          <button onClick={() => onDelete(reply.id)} className="ml-auto text-zinc-300 hover:text-red-500">
+                            <Trash2 className="h-2.5 w-2.5" />
+                          </button>
+                        )}
                       </div>
                       <p className="text-xs text-zinc-500 mt-0.5">{reply.text}</p>
                     </div>
@@ -122,7 +132,7 @@ function CommentItem({ comment, onLike, onReply, onDelete, user }: {
   );
 }
 
-export default function PlayPage({ data }: {
+export default function PlayPage({ data, onBack }: {
   data: AnimeData;
   onBack: () => void;
   onUpdateRating: (r: number) => void;
@@ -140,6 +150,7 @@ export default function PlayPage({ data }: {
   const [comments, setComments] = useState<CommentData[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(true);
   const [newCommentText, setNewCommentText] = useState('');
+  const [ratingVisible, setRatingVisible] = useState(true);
 
   useEffect(() => {
     setCommentsLoading(true);
@@ -156,6 +167,8 @@ export default function PlayPage({ data }: {
       const result = await api.rateAnime(data.id, r);
       setDisplayRating(result.rating);
       notify.success('Оценка сохранена');
+      // Скрываем блок оценки через 1 сек
+      setTimeout(() => setRatingVisible(false), 800);
     } catch (err: any) { notify.error(err.message || 'Ошибка'); }
   }, [loggedIn, hasRated, data.id, notify]);
 
@@ -212,6 +225,7 @@ export default function PlayPage({ data }: {
   }, [notify]);
 
   const totalComments = comments.reduce((sum, c) => sum + 1 + (c.replies?.length || 0), 0);
+  onBack;
 
   return (
     <div className="min-h-screen bg-zinc-50">
@@ -223,27 +237,35 @@ export default function PlayPage({ data }: {
           <div className="mt-4">
             <h1 className="text-xl font-bold text-zinc-900 sm:text-2xl">{data.title}</h1>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              {data.genres.map((g) => <span key={g} className="rounded-full bg-zinc-200/70 px-2.5 py-0.5 text-[11px] font-medium text-zinc-700">{g}</span>)}
+              {data.genres.map((g) => (
+                <span key={g} className="rounded-full bg-zinc-700/80 px-2.5 py-0.5 text-[11px] font-medium text-white">{g}</span>
+              ))}
               <span className="text-sm text-zinc-500">{data.year}</span>
               <span className="text-sm text-zinc-500">·</span>
-              <span className="text-sm text-zinc-500">{formatViews(data.views)}</span>
+              <span className="rounded-full bg-zinc-700/80 px-2.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-none">{formatViews(data.views)}</span>
               <span className="text-sm text-zinc-500">·</span>
-              <span className="text-sm font-semibold text-zinc-800">★ {displayRating > 0 ? `${displayRating}/10` : '0/10'}</span>
+              <span className="rounded-full bg-zinc-700/80 px-2.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-none">
+                ★ {displayRating > 0 ? `${displayRating}/10` : '0/10'}
+              </span>
             </div>
             <div className="mt-4">
               <p className="text-sm text-zinc-600 leading-relaxed">{showFullDescription ? data.fullDescription : shortDesc}</p>
               {data.fullDescription.length > 150 && (
-                <button onClick={() => setShowFullDescription(!showFullDescription)} className="mt-1 text-sm font-medium text-zinc-500 hover:text-zinc-800">{
-                  showFullDescription ? 'Скрыть' : 'Показать полностью'}</button>
+                <button onClick={() => setShowFullDescription(!showFullDescription)} className="mt-1 text-sm font-medium text-zinc-500 hover:text-zinc-800">
+                  {showFullDescription ? 'Скрыть' : 'Показать полностью'}</button>
               )}
             </div>
+          </div>
+
+          {/* Оценка — исчезает после голоса */}
+          {ratingVisible && !hasRated && (
             <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-4">
-              <h3 className="text-sm font-semibold text-zinc-800">Ваша оценка {hasRated && <span className="text-emerald-500 text-xs ml-1">✓</span>}</h3>
+              <h3 className="text-sm font-semibold text-zinc-800">Ваша оценка</h3>
               {!loggedIn && <p className="text-[11px] text-zinc-400 mt-0.5">Войдите в аккаунт чтобы оценить</p>}
-              {hasRated && <p className="text-[11px] text-zinc-400 mt-0.5">Вы уже поставили оценку этому аниме</p>}
               <div className="mt-2"><UserRating rating={userRating} onRate={handleRate} rated={hasRated} /></div>
             </div>
-          </div>
+          )}
+
           <div className="mt-6">
             <h2 className="text-lg font-bold text-zinc-900">Комментарии ({totalComments})</h2>
             <div className="mt-3 flex items-center gap-2">
@@ -259,7 +281,8 @@ export default function PlayPage({ data }: {
             <div className="mt-4 space-y-3 rounded-xl border border-zinc-200 bg-white p-4">
               {commentsLoading ? <div className="flex justify-center py-8"><div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900" /></div>
                 : comments.length === 0 ? <p className="text-sm text-zinc-400 text-center py-4">Пока нет комментариев</p>
-                  : comments.map((c) => <CommentItem key={c.id} comment={c} onLike={handleLike} onReply={handleReply} onDelete={user?.isAdmin ? handleDeleteComment : undefined} user={user} />)
+                  : comments.map((c) => <CommentItem key={c.id} comment={c} onLike={handleLike} onReply={handleReply}
+                    onDelete={handleDeleteComment} user={user} currentUserId={user?.id} />)
               }
             </div>
           </div>

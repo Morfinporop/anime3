@@ -21,8 +21,6 @@ export default function VideoPlayer({ videoSrc, poster, title, onEnded }: Props)
   const containerRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<number | null>(null);
   const onEndedRef = useRef(onEnded);
-  const isDraggingSeek = useRef(false);
-  const isDraggingVolume = useRef(false);
 
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
@@ -76,14 +74,10 @@ export default function VideoPlayer({ videoSrc, poster, title, onEnded }: Props)
     video.addEventListener('waiting', onWait);
     video.addEventListener('canplay', onCanPlay);
     return () => {
-      video.removeEventListener('loadedmetadata', onMeta);
-      video.removeEventListener('timeupdate', onTime);
-      video.removeEventListener('progress', onProgress);
-      video.removeEventListener('play', onPlay);
-      video.removeEventListener('pause', onPause);
-      video.removeEventListener('ended', onEnd);
-      video.removeEventListener('error', onErr);
-      video.removeEventListener('waiting', onWait);
+      video.removeEventListener('loadedmetadata', onMeta); video.removeEventListener('timeupdate', onTime);
+      video.removeEventListener('progress', onProgress); video.removeEventListener('play', onPlay);
+      video.removeEventListener('pause', onPause); video.removeEventListener('ended', onEnd);
+      video.removeEventListener('error', onErr); video.removeEventListener('waiting', onWait);
       video.removeEventListener('canplay', onCanPlay);
     };
   }, [videoSrc]);
@@ -117,29 +111,15 @@ export default function VideoPlayer({ videoSrc, poster, title, onEnded }: Props)
 
   const togglePlay = () => { const v = videoRef.current; if (!v) return; v.paused ? v.play().catch(() => {}) : v.pause(); };
 
-  // Seek with drag — uses mousedown/move/up for hold-to-seek
+  // Seek — click only, no drag
   const seekBarRef = useRef<HTMLDivElement>(null);
-  const onSeekDown = (e: React.MouseEvent) => {
-    isDraggingSeek.current = true;
-    applySeek(e);
-    document.addEventListener('mousemove', onSeekMoveGlobal);
-    document.addEventListener('mouseup', onSeekUpGlobal);
-  };
-  const applySeek = (e: React.MouseEvent | MouseEvent) => {
+  const onSeekClick = (e: React.MouseEvent) => {
     const v = videoRef.current; const bar = seekBarRef.current; if (!v || !v.duration || !bar) return;
     const rect = bar.getBoundingClientRect();
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     v.currentTime = v.duration * pct;
     setPosition(v.currentTime);
   };
-  const onSeekMoveGlobal = (e: MouseEvent) => { if (isDraggingSeek.current) applySeek(e); };
-  const onSeekUpGlobal = () => { isDraggingSeek.current = false; document.removeEventListener('mousemove', onSeekMoveGlobal); document.removeEventListener('mouseup', onSeekUpGlobal); };
-
-  // Volume drag
-  const volumeBarRef = useRef<HTMLInputElement>(null);
-  const onVolumeDown = () => { isDraggingVolume.current = true; document.addEventListener('mousemove', onVolumeMoveGlobal); document.addEventListener('mouseup', onVolumeUpGlobal); };
-  const onVolumeMoveGlobal = () => { /* native input handles it */ };
-  const onVolumeUpGlobal = () => { isDraggingVolume.current = false; document.removeEventListener('mousemove', onVolumeMoveGlobal); document.removeEventListener('mouseup', onVolumeUpGlobal); };
 
   const showUI = controlsVisible || !playing;
   const progressPct = duration > 0 ? (position / duration) * 100 : 0;
@@ -159,7 +139,7 @@ export default function VideoPlayer({ videoSrc, poster, title, onEnded }: Props)
         onDoubleClick={toggleFullscreen}
       />
 
-      {/* Center play/pause flash */}
+      {/* Center flash */}
       <div className={`pointer-events-none absolute inset-0 z-10 flex items-center justify-center transition-opacity duration-200 ${showCenterButton ? 'opacity-100' : 'opacity-0'}`}>
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black/50 backdrop-blur-sm">
           {playing ? <Pause className="h-6 w-6 fill-white text-white" /> : <Play className="h-6 w-6 fill-white text-white ml-0.5" />}
@@ -182,20 +162,18 @@ export default function VideoPlayer({ videoSrc, poster, title, onEnded }: Props)
         </div>
       )}
 
-      {/* Title overlay — fades with controls */}
-      <div className={`absolute top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/80 to-transparent px-4 py-3 pointer-events-none transition-opacity duration-200 ${showUI ? 'opacity-100' : 'opacity-0'}`}>
-        {title && <p className="text-white text-sm font-semibold drop-shadow-lg">{title}</p>}
-      </div>
+      {/* Title — только в fullscreen + когда контролы видны */}
+      {isFullscreen && title && (
+        <div className={`absolute top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/80 to-transparent px-4 py-3 pointer-events-none transition-opacity duration-200 ${showUI ? 'opacity-100' : 'opacity-0'}`}>
+          <p className="text-white text-sm font-semibold drop-shadow-lg">{title}</p>
+        </div>
+      )}
 
-      {/* Controls bar */}
+      {/* Controls */}
       <div className={`absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/95 via-black/50 to-transparent px-3 pb-2 pt-12 transition-opacity duration-200 sm:px-4 ${showUI ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
-        {/* Seek bar — thicker, no thumb circle, black background */}
-        <div ref={seekBarRef}
-          className="relative flex items-center cursor-pointer py-1"
-          onMouseDown={onSeekDown}
-          onClick={applySeek}
-        >
-          <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[5px] rounded-full bg-white/20">
+        {/* Seek bar — thick, no thumb, click only */}
+        <div ref={seekBarRef} className="relative flex items-center cursor-pointer py-1.5" onClick={onSeekClick}>
+          <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[6px] rounded-full bg-white/20">
             <div className="absolute inset-y-0 left-0 rounded-full bg-white/30" style={{ width: `${bufferedPct}%` }} />
             <div className="absolute inset-y-0 left-0 rounded-full bg-white" style={{ width: `${progressPct}%` }} />
           </div>
@@ -212,16 +190,21 @@ export default function VideoPlayer({ videoSrc, poster, title, onEnded }: Props)
             <SkipForward className="h-4 w-4" />
           </button>
 
+          {/* Volume — thick bar, no thumb circle, click only */}
           <div className="flex items-center">
             <button onClick={() => setMuted(m => !m)} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/15">
               {muted || volume === 0 ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
             </button>
-            <input ref={volumeBarRef} type="range" min={0} max={1} step={0.05}
-              value={muted ? 0 : volume}
-              onChange={(e) => { setVolume(parseFloat(e.target.value)); setMuted(false); }}
-              onMouseDown={onVolumeDown}
-              className="ml-1 h-1 w-16 sm:w-20 cursor-pointer appearance-none rounded-full bg-white/30 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white hidden group-hover/player:block sm:block"
-            />
+            <div className="relative ml-1 w-16 sm:w-20 h-5 flex items-center cursor-pointer"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                setVolume(pct); setMuted(false);
+              }}>
+              <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[6px] rounded-full bg-white/20">
+                <div className="absolute inset-y-0 left-0 rounded-full bg-white" style={{ width: `${(muted ? 0 : volume) * 100}%` }} />
+              </div>
+            </div>
           </div>
 
           <div className="ml-1 font-mono text-xs tabular-nums text-white/95">

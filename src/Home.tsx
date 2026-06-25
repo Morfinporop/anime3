@@ -112,7 +112,7 @@ export default function HomePage() {
         <div className="relative mx-auto max-w-[1400px] px-5 py-10 sm:px-8 sm:py-16">
           <h1 className="text-6xl font-bold text-white drop-shadow-lg sm:text-7xl lg:text-8xl">Аниме</h1>
           <p className="mt-3 max-w-xl text-sm text-white/90 sm:text-base leading-relaxed">
-            Добро пожаловать в мир, где можно смотреть аниме любого жанра, типа и года.
+            Добро пожаловать в мир, где можно смотреть аниме любого жанра, типа и года. Мы создали этот большой, удобный, детально проработанный сборник, чтобы каждый зритель легко находил новые релизы, популярные многосерийные тайтлы и редкие ретро-картины для идеального вечернего просмотра.
           </p>
         </div>
       </section>
