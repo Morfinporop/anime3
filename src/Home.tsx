@@ -76,11 +76,7 @@ export default function HomePage() {
   const handleAddView = useCallback(async (animeId: number) => { try { await api.addView(animeId); } catch {} }, []);
   const handleUpdateComments = useCallback((_animeId: number, _comments: CommentData[]) => {}, []);
 
-  // Separated lists
-  const pinned = animeList.filter(a => a.pinned);
-  const unpinned = animeList.filter(a => !a.pinned);
-
-  let filtered = [...unpinned];
+  let filtered = [...animeList];
   if (genre !== 'all') filtered = filtered.filter(a => a.genres?.includes(genre));
   if (sort === 'newest') filtered.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   else if (sort === 'rating') filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
@@ -90,7 +86,6 @@ export default function HomePage() {
     image: a.image || '', views: a.views || 0, rating: a.rating || 0, genres: a.genres || [],
   }));
 
-  const pinnedCards = toCards(pinned);
   const filteredCards = toCards(filtered);
 
   if (selectedAnime) {
@@ -147,20 +142,6 @@ export default function HomePage() {
 
           {loading ? <div className="flex justify-center py-16"><div className="h-7 w-7 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900" /></div> :
             <>
-              {/* Pinned / Recommended */}
-              {pinnedCards.length > 0 && (
-                <div className="mb-6">
-                  <h2 className="text-base font-bold text-zinc-900 mb-3">Так же рекомендуем посмотреть</h2>
-                  <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin -mx-1 px-1">
-                    {pinnedCards.slice(0, 10).map(v => (
-                      <div key={v.id} onClick={() => handleCardClick(v)} className="cursor-pointer flex-shrink-0 w-[180px] sm:w-[200px]">
-                        <Card data={v} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {filteredCards.length === 0 ? <div className="text-center py-16"><p className="text-zinc-400 text-base">Пока ничего нет</p></div> :
                 view === 'grid' ? (
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">

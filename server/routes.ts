@@ -185,7 +185,6 @@ router.get('/anime', async (_req, res) => {
       rating: Math.round(Number(r.rating) * 10) / 10,
       ratingCount: Number(r.rating_count),
       studio: r.studio || '',
-      pinned: r.pinned || false,
       image: r.has_poster ? `/api/files/anime/${r.id}/poster` : '',
       videoSrc: r.has_video ? `/api/files/anime/${r.id}/video` : '',
     }));
@@ -277,19 +276,6 @@ router.post('/anime', requireAuth, requireUploadPermission, async (req, res) => 
     console.error('[create anime]', err.message);
     try { sseEvent(res, 'error', { error: 'Ошибка сервера' }); } catch {}
     res.end();
-  }
-});
-
-router.put('/anime/:id/pin', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const r = await query(`SELECT pinned FROM anime WHERE id = $1`, [req.params.id]);
-    if (!r.rows[0]) return res.status(404).json({ error: 'Не найдено' });
-    const newVal = !r.rows[0].pinned;
-    await query(`UPDATE anime SET pinned = $1 WHERE id = $2`, [newVal, req.params.id]);
-    res.json({ pinned: newVal });
-  } catch (err: any) {
-    console.error('[pin anime]', err.message);
-    res.status(500).json({ error: 'Ошибка сервера' });
   }
 });
 

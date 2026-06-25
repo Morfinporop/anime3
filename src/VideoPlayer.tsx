@@ -32,6 +32,7 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
   const [muted, setMuted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const errorCountRef = useRef(0);
   const [speed, setSpeed] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -64,14 +65,25 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
     setLoading(true); setError(null);
     video.src = videoSrc;
     video.load();
+    errorCountRef.current = 0;
 
     const onMeta = () => { setDuration(video.duration || 0); setLoading(false); };
     const onTime = () => setPosition(video.currentTime);
     const onPlay = () => setPlaying(true);
     const onPause = () => setPlaying(false);
     const onEnd = () => { setPlaying(false); onEndedRef.current?.(); };
-    const onErr = () => { setError('Не удалось загрузить видео'); setLoading(false); };
+    const onWaiting = () => setLoading(true);
     const onCanPlay = () => setLoading(false);
+    const onErr = () => {
+      errorCountRef.current++;
+      if (errorCountRef.current >= 3) {
+        setError('Не удалось загрузить видео');
+      }
+      setLoading(false);
+    };
+
+    const onSeeking = () => { setLoading(true); setError(null); };
+    const onSeeked = () => setLoading(false);
 
     video.addEventListener('loadedmetadata', onMeta);
     video.addEventListener('timeupdate', onTime);
@@ -79,7 +91,10 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
     video.addEventListener('pause', onPause);
     video.addEventListener('ended', onEnd);
     video.addEventListener('error', onErr);
+    video.addEventListener('waiting', onWaiting);
     video.addEventListener('canplay', onCanPlay);
+    video.addEventListener('seeking', onSeeking);
+    video.addEventListener('seeked', onSeeked);
     setTimeout(() => video.play().catch(() => {}), 100);
 
     return () => {
@@ -89,7 +104,10 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
       video.removeEventListener('pause', onPause);
       video.removeEventListener('ended', onEnd);
       video.removeEventListener('error', onErr);
+      video.removeEventListener('waiting', onWaiting);
       video.removeEventListener('canplay', onCanPlay);
+      video.removeEventListener('seeking', onSeeking);
+      video.removeEventListener('seeked', onSeeked);
     };
   }, [videoSrc]);
 

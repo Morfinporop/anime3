@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Shield, Trash2, Pin } from 'lucide-react';
+import { X, Shield, Trash2 } from 'lucide-react';
 import { useUser } from './UserContext';
 import { api } from './api';
 
@@ -34,13 +34,6 @@ export default function AdminPage({ onClose }: { onClose: () => void }) {
     if (!q) return true;
     return a.title.toLowerCase().includes(q) || String(a.id).includes(q);
   });
-
-  const handlePinAnime = async (id: number) => {
-    try {
-      const r = await api.pinAnime(id);
-      setAnimeList(animeList.map(a => a.id === id ? { ...a, pinned: r.pinned } : a));
-    } catch {}
-  };
 
   const handleDeleteAnime = async (id: number) => {
     if (!confirm('Удалить это аниме?')) return;
@@ -95,11 +88,8 @@ export default function AdminPage({ onClose }: { onClose: () => void }) {
                   <tr key={a.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50/50">
                     <td className="px-3 py-2.5"><div className="font-semibold text-zinc-900 text-xs truncate max-w-[200px]">{a.title}</div><div className="text-[10px] text-zinc-500">{a.genres?.join(', ') || '—'}</div></td>
                     <td className="hidden px-3 py-2.5 font-mono text-[11px] text-zinc-500 sm:table-cell">{a.id}</td>
-                    <td className="px-3 py-2.5 text-right flex justify-end gap-1">
-                      <button onClick={() => handlePinAnime(a.id)} className={`flex h-7 w-7 items-center justify-center rounded-full ${a.pinned ? 'text-amber-500 bg-amber-50' : 'text-zinc-400 hover:text-amber-500 hover:bg-amber-50'}`} title="Закрепить">
-                        <Pin className={`h-3.5 w-3.5 ${a.pinned ? 'fill-amber-500' : ''}`} />
-                      </button>
-                      <button onClick={() => handleDeleteAnime(a.id)} className="flex h-7 w-7 items-center justify-center rounded-full text-zinc-400 hover:text-red-500 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></button>
+                    <td className="px-3 py-2.5 text-right">
+                      <button onClick={() => handleDeleteAnime(a.id)} className="flex h-7 w-7 items-center justify-center rounded-full text-zinc-400 hover:text-red-500 hover:bg-red-50 ml-auto"><Trash2 className="h-3.5 w-3.5" /></button>
                     </td>
                   </tr>
                 ))}

@@ -43,7 +43,6 @@ export async function initDB() {
     year INT NOT NULL DEFAULT 2024,
     studio VARCHAR(100) NOT NULL DEFAULT '',
     views_count INT NOT NULL DEFAULT 0,
-    pinned BOOLEAN NOT NULL DEFAULT FALSE,
     created_by INT REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP DEFAULT NOW()
   )`);
@@ -84,7 +83,7 @@ export async function initDB() {
   try { await query(`ALTER TABLE anime ADD COLUMN IF NOT EXISTS hls_segments TEXT`); } catch {}
   try { await query(`ALTER TABLE anime ADD COLUMN IF NOT EXISTS studio VARCHAR(100) NOT NULL DEFAULT ''`); } catch {}
   try { await query(`ALTER TABLE anime ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE`); } catch {}
-  try { await query(`CREATE INDEX IF NOT EXISTS idx_anime_pinned ON anime(pinned DESC, created_at DESC)`); } catch {}
+
 }
 
 export default pool;

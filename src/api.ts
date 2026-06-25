@@ -46,7 +46,6 @@ export const api = {
   uploadAnime: (data: { title: string; description: string; year: number; genres: string; poster?: { data: string; mime: string }; video?: { data: string; mime: string } }) =>
     request<{ id: number }>('/anime', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
   deleteAnime: (id: number) => request(`/anime/${id}`, { method: 'DELETE' }),
-  pinAnime: (id: number) => request<{ pinned: boolean }>(`/anime/${id}/pin`, { method: 'PUT' }),
 
   getComments: (animeId: number) => request<any[]>(`/anime/${animeId}/comments`),
   addComment: (animeId: number, text: string, parentId?: number) =>
