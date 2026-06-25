@@ -5,9 +5,7 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false,
   max: 10,
-  connectionTimeoutMillis: 30000,
-  idleTimeoutMillis: 60000,
-  statement_timeout: 60000,
+  connectionTimeoutMillis: 10000,
 });
 
 export async function query(text: string, params?: any[]) {
@@ -34,14 +32,11 @@ export async function initDB() {
     id SERIAL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     description TEXT NOT NULL DEFAULT '',
-    poster_data BYTEA,
-    poster_mime VARCHAR(50),
-    video_data BYTEA,
-    video_mime VARCHAR(50),
-    hls_segments TEXT,
+    poster_path VARCHAR(255),
+    video_path VARCHAR(255),
+    video_mime VARCHAR(50) DEFAULT 'video/mp4',
     genres TEXT[] NOT NULL DEFAULT '{}',
     year INT NOT NULL DEFAULT 2024,
-    studio VARCHAR(100) NOT NULL DEFAULT '',
     views_count INT NOT NULL DEFAULT 0,
     created_by INT REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP DEFAULT NOW()
@@ -75,15 +70,12 @@ export async function initDB() {
   await query(`CREATE INDEX IF NOT EXISTS idx_comments_anime ON comments(anime_id, created_at DESC)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_ratings_anime ON ratings(anime_id)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_anime_created ON anime(created_at DESC)`);
-  await query(`CREATE INDEX IF NOT EXISTS idx_anime_pinned ON anime(pinned DESC, created_at DESC)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_comment_likes_c ON comment_likes(comment_id)`);
 
-  // Add missing columns for existing DBs
+  // Migrations for existing DBs
   try { await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data TEXT`); } catch {}
-  try { await query(`ALTER TABLE anime ADD COLUMN IF NOT EXISTS hls_segments TEXT`); } catch {}
-  try { await query(`ALTER TABLE anime ADD COLUMN IF NOT EXISTS studio VARCHAR(100) NOT NULL DEFAULT ''`); } catch {}
-  try { await query(`ALTER TABLE anime ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE`); } catch {}
-
+  try { await query(`ALTER TABLE anime ADD COLUMN IF NOT EXISTS poster_path VARCHAR(255)`); } catch {}
+  try { await query(`ALTER TABLE anime ADD COLUMN IF NOT EXISTS video_path VARCHAR(255)`); } catch {}
 }
 
 export default pool;

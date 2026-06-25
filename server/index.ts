@@ -12,6 +12,12 @@ const PORT = parseInt(process.env.PORT || '8080');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Ensure upload directories exist
+const uploadsDir = path.join(__dirname, '..', 'uploads');
+const videosDir = path.join(uploadsDir, 'videos');
+const postersDir = path.join(uploadsDir, 'posters');
+[videosDir, postersDir].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); });
+
 const candidates = [
   path.resolve(process.cwd(), 'dist'),
   path.resolve(__dirname, '..', 'dist'),
@@ -41,19 +47,13 @@ app.use('/api', router);
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
   const indexPath = path.join(distPath, 'index.html');
-  // Express 5: wildcard syntax is {*path} not *
   app.get('{*path}', (_req, res) => {
-    if (fs.existsSync(indexPath)) {
-      res.sendFile(indexPath);
-    } else {
-      res.status(404).send('not found');
-    }
+    if (fs.existsSync(indexPath)) res.sendFile(indexPath);
+    else res.status(404).send('not found');
   });
 }
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[Server] Listening on 0.0.0.0:${PORT}`);
-});
+app.listen(PORT, '0.0.0.0', () => console.log(`[Server] Listening on 0.0.0.0:${PORT}`));
 
 initDB()
   .then(() => console.log('[Server] DB ready'))

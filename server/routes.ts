@@ -1,4 +1,7 @@
 import { Router } from 'express';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { query, checkHealth } from './db.ts';
 import {
   hashPassword, verifyPassword, signToken, verifyToken, getRandomAvatarColor,
@@ -6,7 +9,17 @@ import {
   type UserPayload,
 } from './auth.ts';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsDir = path.join(__dirname, '..', 'uploads');
+const videosDir = path.join(uploadsDir, 'videos');
+const postersDir = path.join(uploadsDir, 'posters');
+
 export const router = Router();
+
+function sseEvent(res: any, event: string, data: any) {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
 
 // ================== AUTH ==================
 router.post('/auth/register', async (req, res) => {
@@ -27,14 +40,10 @@ router.post('/auth/register', async (req, res) => {
        RETURNING id, username, avatar_color, avatar_data, is_admin, can_upload`,
       [username, hash, avatarColor, isAdmin, canUpload]
     );
-    const user = r.rows[0];
+    const u = r.rows[0];
     const payload: UserPayload = {
-      id: user.id,
-      username: user.username,
-      avatarColor: user.avatar_color,
-      avatarData: user.avatar_data || null,
-      isAdmin: user.is_admin,
-      canUpload: user.can_upload,
+      id: u.id, username: u.username, avatarColor: u.avatar_color,
+      avatarData: u.avatar_data || null, isAdmin: u.is_admin, canUpload: u.can_upload,
     };
     const token = signToken(payload);
     res.cookie('token', token, { httpOnly: true, sameSite: 'lax', maxAge: 30 * 24 * 3600 * 1000 });
@@ -50,24 +59,17 @@ router.post('/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body || {};
     if (!username || !password) return res.status(400).json({ error: 'Заполните все поля' });
-
     const r = await query(
       `SELECT id, username, password_hash, avatar_color, avatar_data, is_admin, can_upload FROM users WHERE username = $1`,
       [username]
     );
-    const user = r.rows[0];
-    if (!user) return res.status(401).json({ error: 'Неверные данные' });
-    
-    const valid = await verifyPassword(password, user.password_hash);
+    const u = r.rows[0];
+    if (!u) return res.status(401).json({ error: 'Неверные данные' });
+    const valid = await verifyPassword(password, u.password_hash);
     if (!valid) return res.status(401).json({ error: 'Неверные данные' });
-
     const payload: UserPayload = {
-      id: user.id,
-      username: user.username,
-      avatarColor: user.avatar_color,
-      avatarData: user.avatar_data || null,
-      isAdmin: user.is_admin,
-      canUpload: user.can_upload,
+      id: u.id, username: u.username, avatarColor: u.avatar_color,
+      avatarData: u.avatar_data || null, isAdmin: u.is_admin, canUpload: u.can_upload,
     };
     const token = signToken(payload);
     res.cookie('token', token, { httpOnly: true, sameSite: 'lax', maxAge: 30 * 24 * 3600 * 1000 });
@@ -89,16 +91,10 @@ router.get('/auth/me', async (req, res) => {
     if (!token) return res.status(401).json({ error: 'Требуется авторизация' });
     const decoded = verifyToken(token);
     if (!decoded) return res.status(401).json({ error: 'Недействительный токен' });
-
     const r = await query(`SELECT id, username, avatar_color, avatar_data, is_admin, can_upload FROM users WHERE id = $1`, [decoded.id]);
     const u = r.rows[0];
     if (!u) return res.status(401).json({ error: 'Пользователь не найден' });
-
-    const payload: UserPayload = {
-      id: u.id, username: u.username, avatarColor: u.avatar_color,
-      avatarData: u.avatar_data || null, isAdmin: u.is_admin, canUpload: u.can_upload,
-    };
-    res.json({ user: payload });
+    res.json({ user: { id: u.id, username: u.username, avatarColor: u.avatar_color, avatarData: u.avatar_data || null, isAdmin: u.is_admin, canUpload: u.can_upload } });
   } catch (err: any) {
     console.error('[me]', err.message);
     res.status(500).json({ error: 'Ошибка сервера' });
@@ -109,26 +105,19 @@ router.put('/auth/profile', requireAuth, async (req, res) => {
   try {
     const { username, avatarData } = req.body;
     const userId = req.user!.id;
-
     if (username !== undefined) {
       if (typeof username !== 'string' || username.trim().length < 2) return res.status(400).json({ error: 'Имя минимум 2 символа' });
-      // Check uniqueness
       const exist = await query(`SELECT id FROM users WHERE username = $1 AND id != $2`, [username.trim(), userId]);
       if (exist.rows.length > 0) return res.status(409).json({ error: 'Имя занято' });
       await query(`UPDATE users SET username = $1 WHERE id = $2`, [username.trim(), userId]);
       req.user!.username = username.trim();
     }
-
     if (avatarData !== undefined) {
       await query(`UPDATE users SET avatar_data = $1 WHERE id = $2`, [avatarData || null, userId]);
     }
-
     const r = await query(`SELECT id, username, avatar_color, avatar_data, is_admin, can_upload FROM users WHERE id = $1`, [userId]);
     const u = r.rows[0];
-    const payload: UserPayload = {
-      id: u.id, username: u.username, avatarColor: u.avatar_color,
-      avatarData: u.avatar_data || null, isAdmin: u.is_admin, canUpload: u.can_upload,
-    };
+    const payload: UserPayload = { id: u.id, username: u.username, avatarColor: u.avatar_color, avatarData: u.avatar_data || null, isAdmin: u.is_admin, canUpload: u.can_upload };
     const token = signToken(payload);
     res.cookie('token', token, { httpOnly: true, sameSite: 'lax', maxAge: 30 * 24 * 3600 * 1000 });
     res.json({ user: payload });
@@ -143,14 +132,10 @@ router.post('/auth/change-password', requireAuth, async (req, res) => {
     const { oldPassword, newPassword } = req.body;
     if (!oldPassword || !newPassword) return res.status(400).json({ error: 'Заполните все поля' });
     if (newPassword.length < 3) return res.status(400).json({ error: 'Пароль минимум 3 символа' });
-
     const r = await query(`SELECT password_hash FROM users WHERE id = $1`, [req.user!.id]);
-    const user = r.rows[0];
-    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
-
-    const valid = await verifyPassword(oldPassword, user.password_hash);
+    if (!r.rows[0]) return res.status(404).json({ error: 'Пользователь не найден' });
+    const valid = await verifyPassword(oldPassword, r.rows[0].password_hash);
     if (!valid) return res.status(401).json({ error: 'Неверный старый пароль' });
-
     const hash = await hashPassword(newPassword);
     await query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [hash, req.user!.id]);
     res.json({ ok: true });
@@ -164,31 +149,19 @@ router.post('/auth/change-password', requireAuth, async (req, res) => {
 router.get('/anime', async (_req, res) => {
   try {
     const { rows } = await query(`
-      SELECT a.id, a.title, a.description, a.genres, a.year, a.views_count, a.created_at,
-             COALESCE(AVG(r.score), 0) as rating,
-             COUNT(DISTINCT r.id) as rating_count,
-             CASE WHEN a.poster_data IS NOT NULL THEN true ELSE false END as has_poster,
-             CASE WHEN a.video_data IS NOT NULL THEN true ELSE false END as has_video
-      FROM anime a
-      LEFT JOIN ratings r ON r.anime_id = a.id
-      GROUP BY a.id
-      ORDER BY a.created_at DESC
+      SELECT a.id, a.title, a.description, a.genres, a.year, a.views_count, a.video_path, a.poster_path, a.created_at,
+             COALESCE(AVG(r.score), 0) as rating, COUNT(DISTINCT r.id) as rating_count
+      FROM anime a LEFT JOIN ratings r ON r.anime_id = a.id
+      GROUP BY a.id ORDER BY a.created_at DESC
     `);
-    
-    const items = rows.map(r => ({
-      id: r.id,
-      title: r.title,
-      description: r.description || '',
-      genres: r.genres || [],
-      year: r.year,
-      views: r.views_count,
+    res.json(rows.map((r: any) => ({
+      id: r.id, title: r.title, description: r.description || '', genres: r.genres || [],
+      year: r.year, views: r.views_count,
       rating: Math.round(Number(r.rating) * 10) / 10,
       ratingCount: Number(r.rating_count),
-      studio: r.studio || '',
-      image: r.has_poster ? `/api/files/anime/${r.id}/poster` : '',
-      videoSrc: r.has_video ? `/api/files/anime/${r.id}/video` : '',
-    }));
-    res.json(items);
+      image: r.poster_path ? `/api/files/anime/${r.id}/poster` : '',
+      videoSrc: r.video_path ? `/api/files/anime/${r.id}/video` : '',
+    })));
   } catch (err: any) {
     console.error('[anime list]', err.message);
     res.status(500).json({ error: 'Ошибка сервера' });
@@ -198,29 +171,18 @@ router.get('/anime', async (_req, res) => {
 router.get('/anime/:id', async (req, res) => {
   try {
     const { rows } = await query(`
-      SELECT a.*, 
-             COALESCE(AVG(r.score), 0) as rating,
-             COUNT(DISTINCT r.id) as rating_count
-      FROM anime a
-      LEFT JOIN ratings r ON r.anime_id = a.id
-      WHERE a.id = $1
-      GROUP BY a.id
+      SELECT a.*, COALESCE(AVG(r.score), 0) as rating, COUNT(DISTINCT r.id) as rating_count
+      FROM anime a LEFT JOIN ratings r ON r.anime_id = a.id
+      WHERE a.id = $1 GROUP BY a.id
     `, [req.params.id]);
-    
     const r = rows[0];
     if (!r) return res.status(404).json({ error: 'Не найдено' });
-
     res.json({
-      id: r.id,
-      title: r.title,
-      description: r.description || '',
-      genres: r.genres || [],
-      year: r.year,
-      views: r.views_count,
+      id: r.id, title: r.title, description: r.description || '', genres: r.genres || [],
+      year: r.year, views: r.views_count,
       rating: Math.round(Number(r.rating) * 10) / 10,
-      studio: r.studio || '',
-      image: r.poster_data ? `/api/files/anime/${r.id}/poster` : '',
-      videoSrc: r.video_data ? `/api/files/anime/${r.id}/video` : '',
+      image: r.poster_path ? `/api/files/anime/${r.id}/poster` : '',
+      videoSrc: r.video_path ? `/api/files/anime/${r.id}/video` : '',
     });
   } catch (err: any) {
     console.error('[anime detail]', err.message);
@@ -228,11 +190,7 @@ router.get('/anime/:id', async (req, res) => {
   }
 });
 
-// SSE helper
-function sseEvent(res: any, event: string, data: any) {
-  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-}
-
+// Загрузка аниме — видео и постер на диск, пути в БД
 router.post('/anime', requireAuth, requireUploadPermission, async (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -243,44 +201,64 @@ router.post('/anime', requireAuth, requireUploadPermission, async (req, res) => 
   });
 
   try {
-    const { title, description, year, genres, studio, poster, video } = req.body;
+    const { title, description, year, genres, poster, video } = req.body;
     if (!title) { sseEvent(res, 'error', { error: 'Название обязательно' }); res.end(); return; }
     if (!video?.data) { sseEvent(res, 'error', { error: 'Видео обязательно' }); res.end(); return; }
 
     sseEvent(res, 'progress', { stage: 'decode', percent: 10, text: 'Обработка данных...' });
-
     const genresArray = genres ? String(genres).split(',').map((g: string) => g.trim()).filter(Boolean) : [];
 
-    let posterData: Buffer | null = null, posterMime: string | null = null;
+    // Insert DB row first to get ID
+    const { rows } = await query(
+      `INSERT INTO anime (title, description, year, genres, created_by)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [title, description || '', Number(year) || new Date().getFullYear(), genresArray, req.user!.id]
+    );
+    const animeId = rows[0].id;
+
+    // Save poster to disk
+    let posterPath: string | null = null;
     if (poster?.data && poster?.mime) {
-      posterData = Buffer.from(poster.data, 'base64');
-      posterMime = poster.mime;
+      sseEvent(res, 'progress', { stage: 'save', percent: 30, text: 'Сохранение постера...' });
+      const ext = poster.mime === 'image/png' ? '.png' : poster.mime === 'image/webp' ? '.webp' : '.jpg';
+      const fname = `p_${animeId}_${Date.now()}${ext}`;
+      const filePath = path.join(postersDir, fname);
+      fs.writeFileSync(filePath, Buffer.from(poster.data, 'base64'));
+      posterPath = fname;
+      await query(`UPDATE anime SET poster_path = $1 WHERE id = $2`, [fname, animeId]);
     }
 
-    sseEvent(res, 'progress', { stage: 'decode', percent: 30, text: 'Сохранение видео...' });
+    // Save video to disk
+    sseEvent(res, 'progress', { stage: 'save', percent: 50, text: 'Сохранение видео...' });
+    const videoMime = video.mime || 'video/mp4';
+    const ext = videoMime.includes('mp4') ? '.mp4' : videoMime.includes('webm') ? '.webm' : '.mkv';
+    const vfname = `v_${animeId}_${Date.now()}${ext}`;
+    const vpath = path.join(videosDir, vfname);
     const videoBuf = Buffer.from(video.data, 'base64');
-    const videoMimeVal = video.mime || 'video/mp4';
+    fs.writeFileSync(vpath, videoBuf);
 
-    sseEvent(res, 'progress', { stage: 'save', percent: 60, text: 'Сохранение в базу данных...' });
-
-    const { rows } = await query(
-      `INSERT INTO anime (title, description, year, genres, studio, poster_data, poster_mime, video_data, video_mime, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-      [title, description || '', Number(year) || new Date().getFullYear(), genresArray, (studio || '').trim(), posterData, posterMime, videoBuf, videoMimeVal, req.user!.id]
-    );
+    sseEvent(res, 'progress', { stage: 'save', percent: 90, text: 'Обновление записи...' });
+    await query(`UPDATE anime SET video_path = $1, video_mime = $2 WHERE id = $3`, [vfname, videoMime, animeId]);
 
     sseEvent(res, 'progress', { stage: 'done', percent: 100, text: 'Готово!' });
-    sseEvent(res, 'complete', { id: rows[0].id });
+    sseEvent(res, 'complete', { id: animeId });
     res.end();
   } catch (err: any) {
     console.error('[create anime]', err.message);
-    try { sseEvent(res, 'error', { error: 'Ошибка сервера' }); } catch {}
-    res.end();
+    try { sseEvent(res, 'error', { error: err.message || 'Ошибка сервера' }); } catch {}
+    try { res.end(); } catch {}
   }
 });
 
 router.delete('/anime/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
+    // Get paths before deleting
+    const { rows } = await query(`SELECT poster_path, video_path FROM anime WHERE id = $1`, [req.params.id]);
+    const a = rows[0];
+    if (a) {
+      if (a.poster_path) try { fs.unlinkSync(path.join(postersDir, a.poster_path)); } catch {}
+      if (a.video_path) try { fs.unlinkSync(path.join(videosDir, a.video_path)); } catch {}
+    }
     await query(`DELETE FROM anime WHERE id = $1`, [req.params.id]);
     res.json({ ok: true });
   } catch (err: any) {
@@ -292,18 +270,17 @@ router.delete('/anime/:id', requireAuth, requireAdmin, async (req, res) => {
 // ================== FILES ==================
 router.get('/files/anime/:id/poster', async (req, res) => {
   try {
-    const { rows } = await query(
-      `SELECT poster_data, poster_mime FROM anime WHERE id = $1`,
-      [req.params.id]
-    );
-    const anime = rows[0];
-    if (!anime?.poster_data) {
-      return res.status(404).json({ error: 'Постер не найден' });
-    }
-    res.setHeader('Content-Type', anime.poster_mime || 'image/jpeg');
+    const { rows } = await query(`SELECT poster_path FROM anime WHERE id = $1`, [req.params.id]);
+    const a = rows[0];
+    if (!a?.poster_path) return res.status(404).json({ error: 'Постер не найден' });
+    const filePath = path.join(postersDir, a.poster_path);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Файл не найден' });
+    const ext = path.extname(filePath).toLowerCase();
+    const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+    res.setHeader('Content-Type', mime);
     res.setHeader('Cache-Control', 'public, max-age=86400');
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.send(anime.poster_data);
+    res.sendFile(filePath);
   } catch (err: any) {
     console.error('[get poster]', err.message);
     res.status(500).json({ error: 'Ошибка сервера' });
@@ -312,43 +289,34 @@ router.get('/files/anime/:id/poster', async (req, res) => {
 
 router.get('/files/anime/:id/video', async (req, res) => {
   try {
-    const { rows } = await query(
-      `SELECT video_data, video_mime FROM anime WHERE id = $1`,
-      [req.params.id]
-    );
-    const anime = rows[0];
-    if (!anime?.video_data) {
-      return res.status(404).json({ error: 'Видео не найдено' });
-    }
-    
-    const videoBuffer = anime.video_data;
-    const videoSize = videoBuffer.length;
+    const { rows } = await query(`SELECT video_path, video_mime FROM anime WHERE id = $1`, [req.params.id]);
+    const a = rows[0];
+    if (!a?.video_path) return res.status(404).json({ error: 'Видео не найдено' });
+    const filePath = path.join(videosDir, a.video_path);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Файл не найден' });
+
+    const stat = fs.statSync(filePath);
+    const fileSize = stat.size;
     const range = req.headers.range;
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Content-Type', a.video_mime || 'video/mp4');
 
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : videoSize - 1;
-      const chunkSize = end - start + 1;
-
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
       res.writeHead(206, {
-        'Content-Range': `bytes ${start}-${end}/${videoSize}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': chunkSize,
-        'Content-Type': anime.video_mime || 'video/mp4',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': '*',
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Content-Length': end - start + 1,
       });
-      res.end(videoBuffer.slice(start, end + 1));
+      const stream = fs.createReadStream(filePath, { start, end });
+      stream.pipe(res);
     } else {
-      res.writeHead(200, {
-        'Content-Length': videoSize,
-        'Content-Type': anime.video_mime || 'video/mp4',
-        'Accept-Ranges': 'bytes',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': '*',
-      });
-      res.end(videoBuffer);
+      res.writeHead(200, { 'Content-Length': fileSize });
+      const stream = fs.createReadStream(filePath);
+      stream.pipe(res);
     }
   } catch (err: any) {
     console.error('[get video]', err.message);
@@ -361,50 +329,41 @@ router.get('/anime/:id/comments', optionalAuth, async (req, res) => {
   try {
     const { rows } = await query(`
       SELECT c.id, c.anime_id, c.user_id, c.parent_id, c.text, c.created_at,
-             u.username, u.avatar_color,
+             u.username, u.avatar_color, u.avatar_data,
              COUNT(DISTINCT cl.user_id) as likes_count
       FROM comments c
       LEFT JOIN users u ON u.id = c.user_id
       LEFT JOIN comment_likes cl ON cl.comment_id = c.id
       WHERE c.anime_id = $1
-      GROUP BY c.id, u.username, u.avatar_color
+      GROUP BY c.id, u.username, u.avatar_color, u.avatar_data
       ORDER BY c.created_at DESC
     `, [req.params.id]);
 
     let userLikes: number[] = [];
     if (req.user) {
-      const likesRes = await query(
-        `SELECT comment_id FROM comment_likes WHERE user_id = $1`,
-        [req.user.id]
-      );
-      userLikes = likesRes.rows.map(r => r.comment_id);
+      const lr = await query(`SELECT comment_id FROM comment_likes WHERE user_id = $1`, [req.user.id]);
+      userLikes = lr.rows.map((r: any) => r.comment_id);
     }
 
     const commentsMap = new Map<number, any>();
     const rootComments: any[] = [];
 
-    rows.forEach(r => {
-      const comment = {
-        id: r.id,
-        author: r.username || 'Удалён',
-        avatarColor: r.avatar_color || '#6366f1',
-        avatar: '',
-        text: r.text,
-        date: formatDate(r.created_at),
-        likes: Number(r.likes_count),
-        dislikes: 0,
-        likedByMe: userLikes.includes(r.id),
-        replies: [],
-        parentId: r.parent_id,
-      };
-      commentsMap.set(r.id, comment);
+    rows.forEach((r: any) => {
+      commentsMap.set(r.id, {
+        id: r.id, userId: r.user_id,
+        author: r.username || 'Удалён', avatarColor: r.avatar_color || '#6366f1',
+        avatarData: r.avatar_data || null, text: r.text,
+        date: formatDate(r.created_at), likes: Number(r.likes_count),
+        dislikes: 0, likedByMe: userLikes.includes(r.id),
+        replies: [], parentId: r.parent_id,
+      });
     });
 
-    commentsMap.forEach(comment => {
-      if (comment.parentId && commentsMap.has(comment.parentId)) {
-        commentsMap.get(comment.parentId).replies.push(comment);
-      } else if (!comment.parentId) {
-        rootComments.push(comment);
+    commentsMap.forEach(c => {
+      if (c.parentId && commentsMap.has(c.parentId)) {
+        commentsMap.get(c.parentId).replies.push(c);
+      } else if (!c.parentId) {
+        rootComments.push(c);
       }
     });
 
@@ -419,25 +378,15 @@ router.post('/anime/:id/comments', requireAuth, async (req, res) => {
   try {
     const { text, parentId } = req.body;
     if (!text?.trim()) return res.status(400).json({ error: 'Комментарий не может быть пустым' });
-
     const { rows } = await query(
-      `INSERT INTO comments (anime_id, user_id, parent_id, text)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, created_at`,
+      `INSERT INTO comments (anime_id, user_id, parent_id, text) VALUES ($1, $2, $3, $4) RETURNING id, created_at`,
       [req.params.id, req.user!.id, parentId || null, text.trim()]
     );
-
     res.json({
-      id: rows[0].id,
-      author: req.user!.username,
-      avatarColor: req.user!.avatarColor,
-      avatar: '',
-      text: text.trim(),
-      date: 'Только что',
-      likes: 0,
-      dislikes: 0,
-      likedByMe: false,
-      replies: [],
+      id: rows[0].id, userId: req.user!.id,
+      author: req.user!.username, avatarColor: req.user!.avatarColor,
+      avatarData: req.user!.avatarData || null,
+      text: text.trim(), date: 'Только что', likes: 0, dislikes: 0, likedByMe: false, replies: [],
     });
   } catch (err: any) {
     console.error('[add comment]', err.message);
@@ -448,12 +397,8 @@ router.post('/anime/:id/comments', requireAuth, async (req, res) => {
 router.delete('/comments/:id', requireAuth, async (req, res) => {
   try {
     const { rows } = await query(`SELECT user_id FROM comments WHERE id = $1`, [req.params.id]);
-    if (!rows[0]) return res.status(404).json({ error: 'Комментарий не найден' });
-    
-    if (rows[0].user_id !== req.user!.id && !req.user!.isAdmin) {
-      return res.status(403).json({ error: 'Нет прав' });
-    }
-
+    if (!rows[0]) return res.status(404).json({ error: 'Не найден' });
+    if (rows[0].user_id !== req.user!.id && !req.user!.isAdmin) return res.status(403).json({ error: 'Нет прав' });
     await query(`DELETE FROM comments WHERE id = $1`, [req.params.id]);
     res.json({ ok: true });
   } catch (err: any) {
@@ -464,35 +409,15 @@ router.delete('/comments/:id', requireAuth, async (req, res) => {
 
 router.post('/comments/:id/like', requireAuth, async (req, res) => {
   try {
-    const commentId = Number(req.params.id);
-    const userId = req.user!.id;
-
-    const existing = await query(
-      `SELECT 1 FROM comment_likes WHERE user_id = $1 AND comment_id = $2`,
-      [userId, commentId]
-    );
-
-    if (existing.rows.length > 0) {
-      await query(
-        `DELETE FROM comment_likes WHERE user_id = $1 AND comment_id = $2`,
-        [userId, commentId]
-      );
+    const cid = Number(req.params.id); const uid = req.user!.id;
+    const ex = await query(`SELECT 1 FROM comment_likes WHERE user_id = $1 AND comment_id = $2`, [uid, cid]);
+    if (ex.rows.length > 0) {
+      await query(`DELETE FROM comment_likes WHERE user_id = $1 AND comment_id = $2`, [uid, cid]);
     } else {
-      await query(
-        `INSERT INTO comment_likes (user_id, comment_id) VALUES ($1, $2)`,
-        [userId, commentId]
-      );
+      await query(`INSERT INTO comment_likes (user_id, comment_id) VALUES ($1, $2)`, [uid, cid]);
     }
-
-    const countRes = await query(
-      `SELECT COUNT(*) as likes FROM comment_likes WHERE comment_id = $1`,
-      [commentId]
-    );
-
-    res.json({ 
-      likes: Number(countRes.rows[0].likes),
-      liked: existing.rows.length === 0
-    });
+    const cnt = await query(`SELECT COUNT(*) as likes FROM comment_likes WHERE comment_id = $1`, [cid]);
+    res.json({ likes: Number(cnt.rows[0].likes), liked: ex.rows.length === 0 });
   } catch (err: any) {
     console.error('[like comment]', err.message);
     res.status(500).json({ error: 'Ошибка сервера' });
@@ -502,19 +427,12 @@ router.post('/comments/:id/like', requireAuth, async (req, res) => {
 // ================== RATINGS ==================
 router.get('/anime/:id/rating', requireAuth, async (req, res) => {
   try {
-    const animeId = Number(req.params.id);
-    const userId = req.user!.id;
-
-    const [avgRes, userRes] = await Promise.all([
-      query(`SELECT COALESCE(AVG(score), 0) as avg, COUNT(*) as count FROM ratings WHERE anime_id = $1`, [animeId]),
-      query(`SELECT score FROM ratings WHERE anime_id = $1 AND user_id = $2`, [animeId, userId]),
+    const aid = Number(req.params.id); const uid = req.user!.id;
+    const [avgR, userR] = await Promise.all([
+      query(`SELECT COALESCE(AVG(score), 0) as avg, COUNT(*) as cnt FROM ratings WHERE anime_id = $1`, [aid]),
+      query(`SELECT score FROM ratings WHERE anime_id = $1 AND user_id = $2`, [aid, uid]),
     ]);
-
-    res.json({
-      average: Math.round(Number(avgRes.rows[0].avg) * 10) / 10,
-      count: Number(avgRes.rows[0].count),
-      userScore: userRes.rows[0]?.score || null,
-    });
+    res.json({ average: Math.round(Number(avgR.rows[0].avg) * 10) / 10, count: Number(avgR.rows[0].cnt), userScore: userR.rows[0]?.score || null });
   } catch (err: any) {
     console.error('[get rating]', err.message);
     res.status(500).json({ error: 'Ошибка сервера' });
@@ -523,26 +441,14 @@ router.get('/anime/:id/rating', requireAuth, async (req, res) => {
 
 router.post('/anime/:id/rate', requireAuth, async (req, res) => {
   try {
-    const { score } = req.body;
-    const numScore = Number(score);
-    if (numScore < 1 || numScore > 10) return res.status(400).json({ error: 'Оценка от 1 до 10' });
-
+    const { score } = req.body; const ns = Number(score);
+    if (ns < 1 || ns > 10) return res.status(400).json({ error: 'Оценка от 1 до 10' });
     await query(
-      `INSERT INTO ratings (anime_id, user_id, score)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (user_id, anime_id) DO UPDATE SET score = $3`,
-      [req.params.id, req.user!.id, numScore]
+      `INSERT INTO ratings (anime_id, user_id, score) VALUES ($1, $2, $3) ON CONFLICT (user_id, anime_id) DO UPDATE SET score = $3`,
+      [req.params.id, req.user!.id, ns]
     );
-
-    const ratingRes = await query(
-      `SELECT COALESCE(AVG(score), 0) as avg, COUNT(*) as count FROM ratings WHERE anime_id = $1`,
-      [req.params.id]
-    );
-
-    res.json({
-      rating: Math.round(Number(ratingRes.rows[0].avg) * 10) / 10,
-      count: Number(ratingRes.rows[0].count),
-    });
+    const r = await query(`SELECT COALESCE(AVG(score), 0) as avg, COUNT(*) as cnt FROM ratings WHERE anime_id = $1`, [req.params.id]);
+    res.json({ rating: Math.round(Number(r.rows[0].avg) * 10) / 10, count: Number(r.rows[0].cnt) });
   } catch (err: any) {
     console.error('[rate]', err.message);
     res.status(500).json({ error: 'Ошибка сервера' });
@@ -552,95 +458,55 @@ router.post('/anime/:id/rate', requireAuth, async (req, res) => {
 // ================== VIEWS ==================
 router.post('/anime/:id/view', async (req, res) => {
   try {
-    await query(
-      `UPDATE anime SET views_count = views_count + 1 WHERE id = $1`,
-      [req.params.id]
-    );
+    await query(`UPDATE anime SET views_count = views_count + 1 WHERE id = $1`, [req.params.id]);
     res.json({ ok: true });
-  } catch (err: any) {
-    console.error('[view]', err.message);
-    res.status(500).json({ error: 'Ошибка сервера' });
-  }
+  } catch (e: any) { console.error('[view]', e.message); res.status(500).json({ error: 'Ошибка' }); }
 });
 
 // ================== ADMIN ==================
 router.get('/admin/users', requireAuth, requireAdmin, async (_req, res) => {
   try {
-    const { rows } = await query(
-      `SELECT id, username, avatar_color, avatar_data, is_admin, can_upload, created_at 
-       FROM users ORDER BY created_at DESC`
-    );
-    res.json(rows.map(u => ({
-      id: u.id,
-      nickname: u.username,
-      color: u.avatar_color,
-      avatarData: u.avatar_data || null,
-      isAdmin: u.is_admin,
-      canUpload: u.can_upload,
-    })));
-  } catch (err: any) {
-    console.error('[admin users]', err.message);
-    res.status(500).json({ error: 'Ошибка сервера' });
-  }
+    const { rows } = await query(`SELECT id, username, avatar_color, avatar_data, is_admin, can_upload FROM users ORDER BY created_at DESC`);
+    res.json(rows.map((u: any) => ({ id: u.id, nickname: u.username, color: u.avatar_color, avatarData: u.avatar_data || null, isAdmin: u.is_admin, canUpload: u.can_upload })));
+  } catch (e: any) { console.error('[admin users]', e.message); res.status(500).json({ error: 'Ошибка' }); }
 });
 
 router.put('/admin/users/:id/admin', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { isAdmin } = req.body;
-    await query(`UPDATE users SET is_admin = $1, can_upload = $1 WHERE id = $2`, [Boolean(isAdmin), req.params.id]);
+    await query(`UPDATE users SET is_admin = $1, can_upload = $1 WHERE id = $2`, [Boolean(req.body.isAdmin), req.params.id]);
     res.json({ ok: true });
-  } catch (err: any) {
-    console.error('[set admin]', err.message);
-    res.status(500).json({ error: 'Ошибка сервера' });
-  }
+  } catch (e: any) { console.error('[admin]', e.message); res.status(500).json({ error: 'Ошибка' }); }
 });
 
 router.put('/admin/users/:id/upload', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { canUpload } = req.body;
-    await query(`UPDATE users SET can_upload = $1 WHERE id = $2`, [Boolean(canUpload), req.params.id]);
+    await query(`UPDATE users SET can_upload = $1 WHERE id = $2`, [Boolean(req.body.canUpload), req.params.id]);
     res.json({ ok: true });
-  } catch (err: any) {
-    console.error('[set upload]', err.message);
-    res.status(500).json({ error: 'Ошибка сервера' });
-  }
+  } catch (e: any) { console.error('[upload perm]', e.message); res.status(500).json({ error: 'Ошибка' }); }
 });
 
 router.delete('/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { rows } = await query(`SELECT is_admin FROM users WHERE id = $1`, [req.params.id]);
-    if (rows[0]?.is_admin) return res.status(400).json({ error: 'Нельзя удалить админа' });
-    
+    const r = await query(`SELECT is_admin FROM users WHERE id = $1`, [req.params.id]);
+    if (r.rows[0]?.is_admin) return res.status(400).json({ error: 'Нельзя удалить админа' });
     await query(`DELETE FROM users WHERE id = $1`, [req.params.id]);
     res.json({ ok: true });
-  } catch (err: any) {
-    console.error('[delete user]', err.message);
-    res.status(500).json({ error: 'Ошибка сервера' });
-  }
+  } catch (e: any) { console.error('[del user]', e.message); res.status(500).json({ error: 'Ошибка' }); }
 });
 
 // ================== HEALTH ==================
 router.get('/health', async (_req, res) => {
   const dbOk = await checkHealth();
-  if (dbOk) {
-    res.json({ status: 'ok', db: 'connected' });
-  } else {
-    res.status(503).json({ status: 'error', db: 'disconnected' });
-  }
+  res.json({ status: dbOk ? 'ok' : 'error', db: dbOk ? 'connected' : 'disconnected' });
 });
 
 function formatDate(date: Date): string {
-  const now = new Date();
-  const diff = now.getTime() - new Date(date).getTime();
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (minutes < 1) return 'Только что';
-  if (minutes < 60) return `${minutes} мин. назад`;
-  if (hours < 24) return `${hours} ч. назад`;
+  const now = new Date(); const diff = now.getTime() - new Date(date).getTime();
+  const min = Math.floor(diff / 60000); const hrs = Math.floor(diff / 3600000); const days = Math.floor(diff / 86400000);
+  if (min < 1) return 'Только что';
+  if (min < 60) return `${min} мин. назад`;
+  if (hrs < 24) return `${hrs} ч. назад`;
   if (days < 7) return `${days} дн. назад`;
-  
   return new Date(date).toLocaleDateString('ru-RU');
 }
 
