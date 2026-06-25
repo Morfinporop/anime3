@@ -44,6 +44,8 @@ function LoginModal({ onClose, onSwitchToRegister }: { onClose: () => void; onSw
 
   const handleLogin = async () => {
     if (!nickname.trim() || !password.trim()) { notify.error('Заполните никнейм и пароль'); return; }
+    const token = (window as any).loginToken || '';
+    if (!token) { notify.error('Пройдите проверку Cloudflare'); return; }
     setLoading(true);
     const ok = await login(nickname.trim(), password);
     setLoading(false);
@@ -69,6 +71,7 @@ function LoginModal({ onClose, onSwitchToRegister }: { onClose: () => void; onSw
           </div>
         </div>
       </div>
+      <div className="cf-turnstile mt-3 flex justify-center" data-sitekey="0x4AAAAAADq22Lhd_1fjLeeF" data-callback="loginTokenCallback"></div>
       <button onClick={handleLogin} disabled={!nickname.trim() || !password.trim() || loading}
         className="mt-5 w-full rounded-full bg-zinc-900 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-40">
         {loading ? 'Вход...' : 'Войти'}
@@ -90,8 +93,8 @@ function RegisterModal({ onClose, onSwitchToLogin }: { onClose: () => void; onSw
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
-    const token = (window as any).turnstileToken || '';
-    if (!token) { notify.error('Пройдите проверку'); return; }
+    const token = (window as any).registerToken || '';
+    if (!token) { notify.error('Пройдите проверку Cloudflare'); return; }
     if (!nickname.trim() || !password.trim()) { notify.error('Заполните никнейм и пароль'); return; }
     if (password.trim().length < 3) { notify.error('Пароль должен быть минимум 3 символа'); return; }
     setLoading(true);
@@ -129,7 +132,7 @@ function RegisterModal({ onClose, onSwitchToLogin }: { onClose: () => void; onSw
           </div>
         </div>
       </div>
-      <div className="cf-turnstile mt-3 flex justify-center" data-sitekey="0x4AAAAAADq22Lhd_1fjLeeF" data-callback="turnstileCallback"></div>
+      <div className="cf-turnstile mt-3 flex justify-center" data-sitekey="0x4AAAAAADq22Lhd_1fjLeeF" data-callback="registerTokenCallback"></div>
       <button onClick={handleRegister} disabled={!nickname.trim() || !password.trim() || loading}
         className="mt-5 w-full rounded-full bg-zinc-900 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-40">
         {loading ? 'Создание...' : 'Создать аккаунт'}

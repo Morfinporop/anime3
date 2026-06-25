@@ -168,8 +168,7 @@ router.get('/anime', async (_req, res) => {
              COALESCE(AVG(r.score), 0) as rating,
              COUNT(DISTINCT r.id) as rating_count,
              CASE WHEN a.poster_data IS NOT NULL THEN true ELSE false END as has_poster,
-             CASE WHEN a.video_data IS NOT NULL THEN true ELSE false END as has_video,
-
+             CASE WHEN a.video_data IS NOT NULL THEN true ELSE false END as has_video
       FROM anime a
       LEFT JOIN ratings r ON r.anime_id = a.id
       GROUP BY a.id
