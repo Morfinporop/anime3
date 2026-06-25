@@ -7,14 +7,14 @@ import { router } from './routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = parseInt(process.env.PORT || '3000');
 
 // Middleware
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(cookieParser());
 
-// CORS for development
+// CORS
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin) {
@@ -23,16 +23,14 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   }
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
 
 // API routes
 app.use('/api', router);
 
-// Serve static files in production
+// Serve static files
 const distPath = path.join(__dirname, '..', 'dist');
 app.use(express.static(distPath));
 
@@ -41,23 +39,11 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
-// Error handler
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('[Server Error]', err);
-  res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+// Start server — не падаем если БД недоступна, продолжаем слушать порт
+initDB()
+  .then(() => console.log('[Server] DB initialized'))
+  .catch((err) => console.error('[Server] DB init failed:', err.message));
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[Server] Listening on port ${PORT}`);
 });
-
-// Start server
-async function start() {
-  try {
-    await initDB();
-    app.listen(PORT, () => {
-      console.log(`[Server] Running on port ${PORT}`);
-    });
-  } catch (err) {
-    console.error('[Server] Failed to start:', err);
-    process.exit(1);
-  }
-}
-
-start();

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { query } from './db.js';
+import { query, checkHealth } from './db.js';
 import {
   hashPassword, verifyPassword, signToken, getRandomAvatarColor,
   requireAuth, requireAdmin, requireUploadPermission, optionalAuth,
@@ -524,11 +524,11 @@ router.delete('/admin/users/:id', requireAuth, requireAdmin, async (req, res) =>
 
 // ================== HEALTH ==================
 router.get('/health', async (_req, res) => {
-  try {
-    await query('SELECT 1');
+  const dbOk = await checkHealth();
+  if (dbOk) {
     res.json({ status: 'ok', db: 'connected' });
-  } catch {
-    res.status(500).json({ status: 'error', db: 'disconnected' });
+  } else {
+    res.status(503).json({ status: 'error', db: 'disconnected' });
   }
 });
 

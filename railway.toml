@@ -4,7 +4,8 @@ builder = "NIXPACKS"
 [deploy]
 startCommand = "npm run start:prod"
 healthcheckPath = "/api/health"
-healthcheckTimeout = 100
+healthcheckTimeout = 30
+restartPolicyMaxRetries = 5
 
 [service]
-internalPort = 3000
+port = 3000

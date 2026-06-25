@@ -5,12 +5,16 @@ const { Pool } = pg;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
 });
 
 export async function query(text: string, params?: any[]) {
   const client = await pool.connect();
   try {
-    return await client.query(text, params);
+    const result = await client.query(text, params);
+    return result;
   } finally {
     client.release();
   }
@@ -27,7 +31,9 @@ export async function initDB() {
       can_upload BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT NOW()
     );
+  `);
 
+  await query(`
     CREATE TABLE IF NOT EXISTS anime (
       id SERIAL PRIMARY KEY,
       title VARCHAR(200) NOT NULL,
@@ -42,7 +48,9 @@ export async function initDB() {
       created_by INT REFERENCES users(id) ON DELETE SET NULL,
       created_at TIMESTAMP DEFAULT NOW()
     );
+  `);
 
+  await query(`
     CREATE TABLE IF NOT EXISTS ratings (
       id SERIAL PRIMARY KEY,
       user_id INT REFERENCES users(id) ON DELETE CASCADE,
@@ -51,7 +59,9 @@ export async function initDB() {
       created_at TIMESTAMP DEFAULT NOW(),
       UNIQUE(user_id, anime_id)
     );
+  `);
 
+  await query(`
     CREATE TABLE IF NOT EXISTS comments (
       id SERIAL PRIMARY KEY,
       anime_id INT REFERENCES anime(id) ON DELETE CASCADE,
@@ -60,19 +70,31 @@ export async function initDB() {
       text TEXT NOT NULL,
       created_at TIMESTAMP DEFAULT NOW()
     );
+  `);
 
+  await query(`
     CREATE TABLE IF NOT EXISTS comment_likes (
       user_id INT REFERENCES users(id) ON DELETE CASCADE,
       comment_id INT REFERENCES comments(id) ON DELETE CASCADE,
       created_at TIMESTAMP DEFAULT NOW(),
       PRIMARY KEY (user_id, comment_id)
     );
-
-    CREATE INDEX IF NOT EXISTS idx_comments_anime ON comments(anime_id, created_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_ratings_anime ON ratings(anime_id);
-    CREATE INDEX IF NOT EXISTS idx_anime_created ON anime(created_at DESC);
   `);
-  console.log('[DB] Schema initialized');
+
+  await query(`CREATE INDEX IF NOT EXISTS idx_comments_anime ON comments(anime_id, created_at DESC);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_ratings_anime ON ratings(anime_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_anime_created ON anime(created_at DESC);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_comment_likes_c ON comment_likes(comment_id);`);
+}
+
+// Health check
+export async function checkHealth(): Promise<boolean> {
+  try {
+    await pool.query('SELECT 1');
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export default pool;
