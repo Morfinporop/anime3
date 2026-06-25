@@ -20,6 +20,7 @@ export default function UploadPage({ onClose }: { onClose: () => void; onWatch?:
   const [description, setDescription] = useState('');
   const [year, setYear] = useState(new Date().getFullYear());
   const [genres, setGenres] = useState('');
+  const [studio, setStudio] = useState('');
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [posterPreview, setPosterPreview] = useState('');
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -88,7 +89,7 @@ export default function UploadPage({ onClose }: { onClose: () => void; onWatch?:
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ title: title.trim(), description, year, genres, poster, video }),
+        body: JSON.stringify({ title: title.trim(), description, year, genres, studio, poster, video }),
       });
 
       if (!resp.ok) {
@@ -162,7 +163,8 @@ export default function UploadPage({ onClose }: { onClose: () => void; onWatch?:
               <div className="h-full bg-zinc-900 transition-all duration-500 rounded-full" style={{ width: `${progress?.percent || 0}%` }} />
             </div>
             <p className="mt-2 text-sm font-semibold text-zinc-800">{progress?.text || 'Загрузка...'}</p>
-            <p className="text-xs text-zinc-400">{progress?.percent || 0}%</p>
+              <p className="text-xs text-zinc-400">{progress?.percent || 0}%</p>
+            <p className="text-xs text-zinc-400 mt-1">Это может занять некоторое время</p>
           </div>
         </div>
       ) : (
@@ -179,6 +181,11 @@ export default function UploadPage({ onClose }: { onClose: () => void; onWatch?:
             <div><label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Жанры</label>
               <input type="text" value={genres} onChange={(e) => setGenres(e.target.value)} placeholder="Фэнтези, Драма"
                 className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-400" /></div>
+          </div>
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Студия</label>
+            <input type="text" value={studio} onChange={(e) => setStudio(e.target.value)} placeholder="Студия-создатель"
+              className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-400" />
           </div>
           <div><label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Описание</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="О чём аниме..."

@@ -38,12 +38,15 @@ export const api = {
   logout: () => request('/auth/logout', { method: 'POST' }),
   changePassword: (oldPassword: string, newPassword: string) =>
     request('/auth/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oldPassword, newPassword }) }),
+  updateProfile: (data: { username?: string; avatarData?: string }) =>
+    request<{ user: any }>('/auth/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
 
   getAnimeList: () => request<any[]>('/anime'),
   getAnimeDetail: (id: number) => request<any>(`/anime/${id}`),
   uploadAnime: (data: { title: string; description: string; year: number; genres: string; poster?: { data: string; mime: string }; video?: { data: string; mime: string } }) =>
     request<{ id: number }>('/anime', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
   deleteAnime: (id: number) => request(`/anime/${id}`, { method: 'DELETE' }),
+  pinAnime: (id: number) => request<{ pinned: boolean }>(`/anime/${id}/pin`, { method: 'PUT' }),
 
   getComments: (animeId: number) => request<any[]>(`/anime/${animeId}/comments`),
   addComment: (animeId: number, text: string, parentId?: number) =>

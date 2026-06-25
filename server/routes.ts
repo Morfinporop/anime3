@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { query, checkHealth } from './db.ts';
 import {
-  hashPassword, verifyPassword, signToken, getRandomAvatarColor,
+  hashPassword, verifyPassword, signToken, verifyToken, getRandomAvatarColor,
   requireAuth, requireAdmin, requireUploadPermission, optionalAuth,
   type UserPayload,
 } from './auth.ts';
@@ -28,7 +28,7 @@ router.post('/auth/register', async (req, res) => {
     const r = await query(
       `INSERT INTO users (username, password_hash, avatar_color, is_admin, can_upload)
        VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, username, avatar_color, is_admin, can_upload`,
+       RETURNING id, username, avatar_color, avatar_data, is_admin, can_upload`,
       [username, hash, avatarColor, isAdmin, canUpload]
     );
     const user = r.rows[0];
@@ -36,6 +36,7 @@ router.post('/auth/register', async (req, res) => {
       id: user.id,
       username: user.username,
       avatarColor: user.avatar_color,
+      avatarData: user.avatar_data || null,
       isAdmin: user.is_admin,
       canUpload: user.can_upload,
     };
@@ -55,7 +56,7 @@ router.post('/auth/login', async (req, res) => {
     if (!username || !password) return res.status(400).json({ error: 'Заполните все поля' });
 
     const r = await query(
-      `SELECT id, username, password_hash, avatar_color, is_admin, can_upload FROM users WHERE username = $1`,
+      `SELECT id, username, password_hash, avatar_color, avatar_data, is_admin, can_upload FROM users WHERE username = $1`,
       [username]
     );
     const user = r.rows[0];
@@ -68,6 +69,7 @@ router.post('/auth/login', async (req, res) => {
       id: user.id,
       username: user.username,
       avatarColor: user.avatar_color,
+      avatarData: user.avatar_data || null,
       isAdmin: user.is_admin,
       canUpload: user.can_upload,
     };
@@ -85,8 +87,59 @@ router.post('/auth/logout', (_req, res) => {
   res.json({ ok: true });
 });
 
-router.get('/auth/me', requireAuth, (req, res) => {
-  res.json({ user: req.user });
+router.get('/auth/me', async (req, res) => {
+  try {
+    const token = req.cookies?.token || req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'Требуется авторизация' });
+    const decoded = verifyToken(token);
+    if (!decoded) return res.status(401).json({ error: 'Недействительный токен' });
+
+    const r = await query(`SELECT id, username, avatar_color, avatar_data, is_admin, can_upload FROM users WHERE id = $1`, [decoded.id]);
+    const u = r.rows[0];
+    if (!u) return res.status(401).json({ error: 'Пользователь не найден' });
+
+    const payload: UserPayload = {
+      id: u.id, username: u.username, avatarColor: u.avatar_color,
+      avatarData: u.avatar_data || null, isAdmin: u.is_admin, canUpload: u.can_upload,
+    };
+    res.json({ user: payload });
+  } catch (err: any) {
+    console.error('[me]', err.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+router.put('/auth/profile', requireAuth, async (req, res) => {
+  try {
+    const { username, avatarData } = req.body;
+    const userId = req.user!.id;
+
+    if (username !== undefined) {
+      if (typeof username !== 'string' || username.trim().length < 2) return res.status(400).json({ error: 'Имя минимум 2 символа' });
+      // Check uniqueness
+      const exist = await query(`SELECT id FROM users WHERE username = $1 AND id != $2`, [username.trim(), userId]);
+      if (exist.rows.length > 0) return res.status(409).json({ error: 'Имя занято' });
+      await query(`UPDATE users SET username = $1 WHERE id = $2`, [username.trim(), userId]);
+      req.user!.username = username.trim();
+    }
+
+    if (avatarData !== undefined) {
+      await query(`UPDATE users SET avatar_data = $1 WHERE id = $2`, [avatarData || null, userId]);
+    }
+
+    const r = await query(`SELECT id, username, avatar_color, avatar_data, is_admin, can_upload FROM users WHERE id = $1`, [userId]);
+    const u = r.rows[0];
+    const payload: UserPayload = {
+      id: u.id, username: u.username, avatarColor: u.avatar_color,
+      avatarData: u.avatar_data || null, isAdmin: u.is_admin, canUpload: u.can_upload,
+    };
+    const token = signToken(payload);
+    res.cookie('token', token, { httpOnly: true, sameSite: 'lax', maxAge: 30 * 24 * 3600 * 1000 });
+    res.json({ user: payload });
+  } catch (err: any) {
+    console.error('[profile]', err.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 });
 
 router.post('/auth/change-password', requireAuth, async (req, res) => {
@@ -136,6 +189,8 @@ router.get('/anime', async (_req, res) => {
       views: r.views_count,
       rating: Math.round(Number(r.rating) * 10) / 10,
       ratingCount: Number(r.rating_count),
+      studio: r.studio || '',
+      pinned: r.pinned || false,
       image: r.has_poster ? `/api/files/anime/${r.id}/poster` : '',
       videoSrc: r.has_hls ? `/api/files/anime/${r.id}/hls/master.m3u8` : (r.has_video ? `/api/files/anime/${r.id}/video` : ''),
       createdAt: r.created_at,
@@ -170,6 +225,7 @@ router.get('/anime/:id', async (req, res) => {
       year: r.year,
       views: r.views_count,
       rating: Math.round(Number(r.rating) * 10) / 10,
+      studio: r.studio || '',
       image: r.poster_data ? `/api/files/anime/${r.id}/poster` : '',
       videoSrc: r.hls_segments ? `/api/files/anime/${r.id}/hls/master.m3u8` : (r.video_data ? `/api/files/anime/${r.id}/video` : ''),
     });
@@ -195,7 +251,7 @@ router.post('/anime', requireAuth, requireUploadPermission, async (req, res) => 
   });
 
   try {
-    const { title, description, year, genres, poster, video } = req.body;
+    const { title, description, year, genres, studio, poster, video } = req.body;
     if (!title) { sseEvent(res, 'error', { error: 'Название обязательно' }); res.end(); return; }
     if (!video?.data) { sseEvent(res, 'error', { error: 'Видео обязательно' }); res.end(); return; }
 
@@ -235,6 +291,7 @@ router.post('/anime', requireAuth, requireUploadPermission, async (req, res) => 
       '-i', inputPath,
       '-preset', 'ultrafast',
       '-crf', '28',
+      '-max_muxing_queue_size', '1024',
       '-map', '0:v', '-map', '0:a',
       '-s:v:0', '1920x1080', '-b:v:0', '2000k',
       '-map', '0:v', '-map', '0:a',
@@ -296,10 +353,10 @@ router.post('/anime', requireAuth, requireUploadPermission, async (req, res) => 
     const segmentsJson = dbFiles.map(f => ({ name: f.name, data: f.data.toString('base64'), mime: f.mime }));
 
     const { rows } = await query(
-      `INSERT INTO anime (title, description, year, genres, poster_data, poster_mime, hls_segments, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO anime (title, description, year, genres, studio, poster_data, poster_mime, hls_segments, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id`,
-      [title, description || '', Number(year) || new Date().getFullYear(), genresArray, posterData, posterMime, JSON.stringify(segmentsJson), req.user!.id]
+      [title, description || '', Number(year) || new Date().getFullYear(), genresArray, (studio || '').trim(), posterData, posterMime, JSON.stringify(segmentsJson), req.user!.id]
     );
 
     // Cleanup temp
@@ -312,6 +369,19 @@ router.post('/anime', requireAuth, requireUploadPermission, async (req, res) => 
     console.error('[create anime]', err.message);
     sseEvent(res, 'error', { error: err.message || 'Ошибка сервера' });
     res.end();
+  }
+});
+
+router.put('/anime/:id/pin', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const r = await query(`SELECT pinned FROM anime WHERE id = $1`, [req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'Не найдено' });
+    const newVal = !r.rows[0].pinned;
+    await query(`UPDATE anime SET pinned = $1 WHERE id = $2`, [newVal, req.params.id]);
+    res.json({ pinned: newVal });
+  } catch (err: any) {
+    console.error('[pin anime]', err.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
   }
 });
 

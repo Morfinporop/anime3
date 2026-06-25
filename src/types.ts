@@ -9,6 +9,7 @@ export interface AnimeData {
   genres: string[];
   year: number;
   videoSrc: string;
+  studio?: string;
   comments: CommentData[];
 }
 

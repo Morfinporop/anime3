@@ -22,6 +22,7 @@ export async function initDB() {
     username VARCHAR(32) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     avatar_color VARCHAR(16) NOT NULL DEFAULT '#6366f1',
+    avatar_data TEXT,
     is_admin BOOLEAN NOT NULL DEFAULT FALSE,
     can_upload BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT NOW()
@@ -38,7 +39,9 @@ export async function initDB() {
     hls_segments TEXT,
     genres TEXT[] NOT NULL DEFAULT '{}',
     year INT NOT NULL DEFAULT 2024,
+    studio VARCHAR(100) NOT NULL DEFAULT '',
     views_count INT NOT NULL DEFAULT 0,
+    pinned BOOLEAN NOT NULL DEFAULT FALSE,
     created_by INT REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP DEFAULT NOW()
   )`);
@@ -71,6 +74,7 @@ export async function initDB() {
   await query(`CREATE INDEX IF NOT EXISTS idx_comments_anime ON comments(anime_id, created_at DESC)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_ratings_anime ON ratings(anime_id)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_anime_created ON anime(created_at DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_anime_pinned ON anime(pinned DESC, created_at DESC)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_comment_likes_c ON comment_likes(comment_id)`);
 }
 

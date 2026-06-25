@@ -246,7 +246,9 @@ export default function PlayPage({ data, onBack }: {
               {data.genres.map((g) => (
                 <span key={g} className="rounded-full bg-blue-500/15 text-blue-600 px-2.5 py-0.5 text-[11px] font-medium">{g}</span>
               ))}
-              <span className="rounded-full bg-blue-500/15 text-blue-600 px-2.5 py-0.5 text-[11px] font-medium">{data.year}</span>
+              <span className="text-sm text-zinc-500">{data.year}</span>
+              {data.studio && <span className="text-sm text-zinc-400">{data.studio}</span>}
+              <span className="text-zinc-300">·</span>
               <span className="text-sm text-zinc-500">{formatViews(data.views)}</span>
               <span className="text-zinc-300">·</span>
               <span className="text-sm font-semibold text-zinc-500">★ {displayRating > 0 ? `${displayRating}/10` : '0/10'}</span>

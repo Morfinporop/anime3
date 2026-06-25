@@ -9,6 +9,7 @@ export interface UserPayload {
   id: number;
   username: string;
   avatarColor: string;
+  avatarData?: string;
   isAdmin: boolean;
   canUpload: boolean;
 }

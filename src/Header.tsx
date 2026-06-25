@@ -140,12 +140,41 @@ function RegisterModal({ onClose, onSwitchToLogin }: { onClose: () => void; onSw
 }
 
 function SettingsModal({ onClose }: { onClose: () => void }) {
-  const { user, changePassword } = useUser();
+  const { user, changePassword, updateProfile } = useUser();
+  const [nickname, setNickname] = useState(user?.nickname || '');
   const [oldPass, setOldPass] = useState('');
   const [newPass, setNewPass] = useState('');
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState(user?.avatarData || '');
   const [loading, setLoading] = useState(false);
+
+  const handleAvatar = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 1024 * 1024) return;
+    setAvatarFile(f);
+    const r = new FileReader();
+    r.onload = () => setAvatarPreview(r.result as string);
+    r.readAsDataURL(f);
+  };
+
+  const handleSave = async () => {
+    setLoading(true);
+    let avatarData: string | undefined;
+    if (avatarFile) {
+      avatarData = await new Promise<string>((resolve) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result as string);
+        r.readAsDataURL(avatarFile);
+      });
+    }
+    const newNick = nickname.trim() !== user?.nickname ? nickname.trim() : undefined;
+    await updateProfile({ username: newNick, avatarData: avatarData || undefined });
+    setLoading(false);
+    onClose();
+  };
 
   const handleChange = async () => {
     if (!oldPass.trim() || !newPass.trim()) return;
@@ -156,8 +185,25 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <ModalShell onClose={onClose} title="Настройки" subtitle={`${user?.nickname} — ID#${user?.id}${user?.isAdmin ? ' (Админ)' : ''}`}>
+    <ModalShell onClose={onClose} title="Настройки">
       <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <label className="relative cursor-pointer flex-shrink-0">
+            <div className="h-12 w-12 rounded-full overflow-hidden border-2 border-zinc-200 flex items-center justify-center bg-zinc-100"
+              style={avatarPreview ? {} : { backgroundColor: user?.color }}>
+              {avatarPreview ? <img src={avatarPreview} alt="" className="h-full w-full object-cover" /> :
+                <span className="text-lg font-bold text-white">{user?.nickname.charAt(0).toUpperCase()}</span>}
+            </div>
+            <input type="file" accept="image/*" onChange={handleAvatar} className="absolute inset-0 opacity-0" />
+          </label>
+          <div className="flex-1">
+            <label className="text-[10px] font-semibold text-zinc-500 uppercase">Никнейм</label>
+            <input type="text" value={nickname} onChange={(e) => setNickname(e.target.value)}
+              className="mt-0.5 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-sm outline-none focus:border-zinc-400" />
+          </div>
+        </div>
+        <p className="text-xs text-zinc-400">ID#{user?.id}</p>
+        <hr className="border-zinc-100" />
         <div>
           <label className="text-xs font-medium text-zinc-600">Старый пароль</label>
           <div className="relative mt-1">
@@ -179,10 +225,12 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
-      <button onClick={handleChange} disabled={!oldPass.trim() || !newPass.trim() || loading}
-        className="mt-5 w-full rounded-full bg-zinc-900 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-40">
-        {loading ? 'Сохранение...' : 'Сменить пароль'}
-      </button>
+      <div className="flex gap-2 mt-5">
+        <button onClick={handleChange} disabled={!oldPass.trim() || !newPass.trim() || loading}
+          className="flex-1 rounded-full border border-zinc-200 py-2 text-xs font-semibold text-zinc-600 hover:bg-zinc-50 disabled:opacity-40">Сменить пароль</button>
+        <button onClick={handleSave} disabled={loading}
+          className="flex-1 rounded-full bg-zinc-900 py-2 text-xs font-semibold text-white hover:bg-zinc-800 disabled:opacity-40">Сохранить</button>
+      </div>
     </ModalShell>
   );
 }
@@ -306,7 +354,6 @@ export default function Header({ onSelectAnime }: { onSelectAnime?: (anime: any)
                       <div className="px-3 py-2 border-b border-zinc-100">
                         <p className="text-xs font-semibold text-zinc-800">
                           {user.nickname} <span className="text-zinc-400 font-normal">ID#{user.id}</span>
-                          {isAdmin && <span className="text-pink-500 font-semibold ml-1">Админ</span>}
                         </p>
                       </div>
                       <button onClick={() => { setMenuOpen(false); setShowSettings(true); }}
