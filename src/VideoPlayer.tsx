@@ -24,6 +24,7 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const onEndedRef = useRef(onEnded);
+  const hideTimerRef = useRef<number | null>(null);
 
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
@@ -33,7 +34,7 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [speed, setSpeed] = useState(1);
-  const [qualities, setQualities] = useState<{ label: string; index: number }[]>([]);
+  const [qualities, setQualities] = useState<{ label: string; index: number }[]>([{ label: 'Авто', index: -1 }]);
   const [currentQuality, setCurrentQuality] = useState(-1);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'speed' | 'quality'>('speed');
@@ -55,24 +56,19 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     hideTimerRef.current = window.setTimeout(() => { if (playing) setControlsVisible(false); }, 2500);
   }, [playing]);
-  const hideTimerRef = useRef<number | null>(null);
+
   useEffect(() => { resetHideTimer(); return () => { if (hideTimerRef.current) clearTimeout(hideTimerRef.current); }; }, [playing, resetHideTimer]);
 
-  // Init HLS
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    // Cleanup old
     if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
     setLoading(true);
     setError(null);
-    setQualities([]);
+    setQualities([{ label: 'Авто', index: -1 }]);
     setCurrentQuality(-1);
 
-    const src = videoSrc;
-
-    // Helpers
     const onMeta = () => { setDuration(video.duration || 0); setLoading(false); };
     const onTime = () => setPosition(video.currentTime);
     const onPlay = () => setPlaying(true);
@@ -87,15 +83,14 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
     video.addEventListener('ended', onEnd);
     video.addEventListener('error', onErr);
 
-    if (src.endsWith('.m3u8') && Hls.isSupported()) {
+    if (videoSrc.endsWith('.m3u8') && Hls.isSupported()) {
       const hls = new Hls({ enableWorker: false });
       hlsRef.current = hls;
-      hls.loadSource(src);
+      hls.loadSource(videoSrc);
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        const qs: { label: string; index: number }[] = [];
-        qs.push({ label: 'Авто', index: -1 });
+        const qs: { label: string; index: number }[] = [{ label: 'Авто', index: -1 }];
         hls.levels.forEach((level, i) => {
           const h = level.height || 0;
           qs.push({ label: h > 0 ? `${h}p` : `Поток ${i + 1}`, index: i });
@@ -107,15 +102,10 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
       });
 
       hls.on(Hls.Events.ERROR, (_ev, data) => {
-        if (data.fatal) {
-          setError('Ошибка загрузки HLS');
-          setLoading(false);
-          hls.destroy();
-          hlsRef.current = null;
-        }
+        if (data.fatal) { setError('Ошибка HLS потока'); setLoading(false); hls.destroy(); hlsRef.current = null; }
       });
     } else {
-      video.src = src;
+      video.src = videoSrc;
       video.load();
       video.addEventListener('canplay', () => setLoading(false), { once: true });
       setTimeout(() => video.play().catch(() => {}), 100);
@@ -134,20 +124,15 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
 
   const switchQuality = (index: number) => {
     setCurrentQuality(index);
-    if (index === -1 && hlsRef.current) {
-      hlsRef.current.currentLevel = -1;
-    } else if (hlsRef.current && hlsRef.current.levels[index] != null) {
+    if (hlsRef.current) {
       hlsRef.current.currentLevel = index;
     }
     setShowSettings(false);
   };
 
-  // Speed
   useEffect(() => { if (videoRef.current) videoRef.current.playbackRate = speed; }, [speed]);
-  // Volume
   useEffect(() => { const v = videoRef.current; if (v) { v.volume = volume; v.muted = muted; } }, [volume, muted]);
 
-  // Keyboard
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName; if (tag === 'INPUT' || tag === 'TEXTAREA') return;
@@ -198,7 +183,6 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
         onDoubleClick={toggleFullscreen}
       />
 
-      {/* Center flash */}
       <div className={`pointer-events-none absolute inset-0 z-10 flex items-center justify-center transition-opacity duration-200 ${showCenterButton ? 'opacity-100' : 'opacity-0'}`}>
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black/50">
           {playing ? <Pause className="h-6 w-6 fill-white text-white" /> : <Play className="h-6 w-6 fill-white text-white ml-0.5" />}
@@ -221,7 +205,6 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
         </div>
       )}
 
-      {/* Controls */}
       <div className={`absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/95 via-black/50 to-transparent px-3 pb-2 pt-12 transition-opacity duration-200 sm:px-4 ${showUI ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
         <div ref={seekBarRef} className="relative flex items-center cursor-pointer py-1.5" onClick={onSeekClick}>
           <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[6px] rounded-full bg-white/20">
@@ -253,7 +236,6 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
           </div>
           <div className="flex-1" />
 
-          {/* Settings: speed + quality */}
           <div className="relative">
             <button onClick={() => setShowSettings(s => !s)} className={`flex h-8 w-8 items-center justify-center rounded-full ${showSettings ? 'bg-white/20' : 'hover:bg-white/15'}`}>
               <Settings className="h-4 w-4" />
@@ -262,23 +244,24 @@ export default function VideoPlayer({ videoSrc, poster, onEnded }: Props) {
               <div className="absolute bottom-10 right-0 z-40 w-44 overflow-hidden rounded-xl bg-black/95 text-white shadow-2xl ring-1 ring-white/10">
                 <div className="flex border-b border-white/10">
                   <button onClick={() => setSettingsTab('speed')} className={`flex-1 text-[10px] font-semibold py-2 ${settingsTab === 'speed' ? 'bg-white/10 text-white' : 'text-white/60'}`}>Скорость</button>
-                  {qualities.length > 1 && (
-                    <button onClick={() => setSettingsTab('quality')} className={`flex-1 text-[10px] font-semibold py-2 ${settingsTab === 'quality' ? 'bg-white/10 text-white' : 'text-white/60'}`}>Качество</button>
-                  )}
+                  <button onClick={() => setSettingsTab('quality')} className={`flex-1 text-[10px] font-semibold py-2 ${settingsTab === 'quality' ? 'bg-white/10 text-white' : 'text-white/60'}`}>Качество</button>
                 </div>
                 <div className="p-1 max-h-56 overflow-y-auto">
-                  {settingsTab === 'speed' && SPEEDS.map(s => (
-                    <button key={s} onClick={() => { setSpeed(s); setShowSettings(false); }}
-                      className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-xs hover:bg-white/10 ${speed === s ? 'font-semibold' : ''}`}>
-                      {s === 1 ? 'Обычная' : `${s}x`}{speed === s && <Check className="h-3.5 w-3.5" />}
-                    </button>
-                  ))}
-                  {settingsTab === 'quality' && qualities.map(q => (
-                    <button key={q.index} onClick={() => switchQuality(q.index)}
-                      className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-xs hover:bg-white/10 ${currentQuality === q.index ? 'font-semibold' : ''}`}>
-                      {q.label}{currentQuality === q.index && <Check className="h-3.5 w-3.5" />}
-                    </button>
-                  ))}
+                  {settingsTab === 'speed' ? (
+                    SPEEDS.map(s => (
+                      <button key={s} onClick={() => { setSpeed(s); setShowSettings(false); }}
+                        className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-xs hover:bg-white/10 ${speed === s ? 'font-semibold' : ''}`}>
+                        {s === 1 ? 'Обычная' : `${s}x`}{speed === s && <Check className="h-3.5 w-3.5" />}
+                      </button>
+                    ))
+                  ) : (
+                    qualities.map(q => (
+                      <button key={q.index} onClick={() => switchQuality(q.index)}
+                        className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-xs hover:bg-white/10 ${currentQuality === q.index ? 'font-semibold' : ''}`}>
+                        {q.label}{currentQuality === q.index && <Check className="h-3.5 w-3.5" />}
+                      </button>
+                    ))
+                  )}
                 </div>
               </div>
             )}
