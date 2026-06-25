@@ -15,16 +15,7 @@ const formatViews = (n: number) => {
 
 function UserRating({ rating, onRate, rated }: { rating: number | null; onRate: (r: number) => void; rated: boolean }) {
   const [hovered, setHovered] = useState(0);
-  if (rated) {
-    return (
-      <div className="flex items-center gap-1">
-        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-          <Star key={n} className={`h-5 w-5 sm:h-6 sm:w-6 ${rating && n <= rating ? 'fill-yellow-400 text-yellow-400' : 'text-zinc-200'}`} />
-        ))}
-        <span className="ml-1 text-sm font-semibold text-zinc-500">{rating ? `${rating}/10` : '0/10'}</span>
-      </div>
-    );
-  }
+  if (rated) return null; // полностью скрываем после оценки
   return (
     <div className="flex items-center gap-0.5" onMouseLeave={() => setHovered(0)}>
       {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => {
@@ -73,7 +64,7 @@ function CommentItem({ comment, onLike, onReply, onDelete, user, currentUserId }
             <span className="text-sm font-semibold text-zinc-800">{comment.author}</span>
             <span className="text-[11px] text-zinc-400">{comment.date}</span>
             {(user?.isAdmin || isOwner) && onDelete && (
-              <button onClick={() => onDelete(comment.id)} className="ml-auto text-zinc-300 hover:text-red-500" title="Удалить">
+              <button onClick={() => onDelete(comment.id)} className="ml-auto text-zinc-400 hover:text-red-500 transition-colors" title="Удалить">
                 <Trash2 className="h-3 w-3" />
               </button>
             )}
@@ -106,22 +97,26 @@ function CommentItem({ comment, onLike, onReply, onDelete, user, currentUserId }
               </button>
               {showReplies && (
                 <div className="ml-4 mt-2 border-l-2 border-zinc-100 pl-3">
-                  {comment.replies.map((reply) => (
-                    <div key={reply.id} className="mb-2 last:mb-0">
-                      <div className="flex items-center gap-2">
-                        <div className="h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
-                          style={{ backgroundColor: reply.avatarColor || '#6366f1' }}>{reply.author.charAt(0)}</div>
-                        <span className="text-xs font-semibold text-zinc-700">{reply.author}</span>
-                        <span className="text-[10px] text-zinc-400">{reply.date}</span>
-                        {(user?.isAdmin || (currentUserId != null && (reply as any).userId === currentUserId)) && onDelete && (
-                          <button onClick={() => onDelete(reply.id)} className="ml-auto text-zinc-300 hover:text-red-500">
-                            <Trash2 className="h-2.5 w-2.5" />
-                          </button>
-                        )}
+                  {comment.replies.map((reply) => {
+                    const replyIsOwner = currentUserId != null && (reply as any).userId === currentUserId;
+                    const replyIsAdmin = user?.isAdmin === true;
+                    return (
+                      <div key={reply.id} className="mb-2 last:mb-0">
+                        <div className="flex items-center gap-2">
+                          <div className="h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+                            style={{ backgroundColor: reply.avatarColor || '#6366f1' }}>{reply.author.charAt(0)}</div>
+                          <span className="text-xs font-semibold text-zinc-700">{reply.author}</span>
+                          <span className="text-[10px] text-zinc-400">{reply.date}</span>
+                          {(replyIsAdmin || replyIsOwner) && onDelete && (
+                            <button onClick={() => onDelete(reply.id)} className="ml-auto text-zinc-400 hover:text-red-500 transition-colors">
+                              <Trash2 className="h-2.5 w-2.5" />
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-xs text-zinc-500 mt-0.5">{reply.text}</p>
                       </div>
-                      <p className="text-xs text-zinc-500 mt-0.5">{reply.text}</p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -146,11 +141,23 @@ export default function PlayPage({ data, onBack }: {
   const [showFullDescription, setShowFullDescription] = useState(false);
   const [userRating, setUserRating] = useState<number | null>(null);
   const [hasRated, setHasRated] = useState(false);
+  const [ratedLoading, setRatedLoading] = useState(true);
   const [displayRating, setDisplayRating] = useState(data.rating || 0);
   const [comments, setComments] = useState<CommentData[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(true);
   const [newCommentText, setNewCommentText] = useState('');
-  const [ratingVisible, setRatingVisible] = useState(true);
+
+  // Проверяем поставил ли юзер уже оценку
+  useEffect(() => {
+    if (!user) { setRatedLoading(false); return; }
+    setRatedLoading(true);
+    // Узнаём оценку юзера через запрос рейтинга аниме
+    fetch(`/api/anime/${data.id}/rating`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (d.userScore) { setHasRated(true); setUserRating(d.userScore); } })
+      .catch(() => {})
+      .finally(() => setRatedLoading(false));
+  }, [data.id, user]);
 
   useEffect(() => {
     setCommentsLoading(true);
@@ -167,8 +174,6 @@ export default function PlayPage({ data, onBack }: {
       const result = await api.rateAnime(data.id, r);
       setDisplayRating(result.rating);
       notify.success('Оценка сохранена');
-      // Скрываем блок оценки через 1 сек
-      setTimeout(() => setRatingVisible(false), 800);
     } catch (err: any) { notify.error(err.message || 'Ошибка'); }
   }, [loggedIn, hasRated, data.id, notify]);
 
@@ -230,23 +235,24 @@ export default function PlayPage({ data, onBack }: {
   return (
     <div className="min-h-screen bg-zinc-50">
       <Header />
-      <div className="mx-auto max-w-[1600px]">
-        <VideoPlayer videoSrc={data.videoSrc} poster={data.image} title={data.title}
-          onEnded={() => { try { api.addView(data.id); } catch {} }} />
+      <div className="mx-auto w-full max-w-[1600px]">
+        <div className="lg:px-16 xl:px-32">
+          <VideoPlayer videoSrc={data.videoSrc} poster={data.image} title={data.title}
+            onEnded={() => { try { api.addView(data.id); } catch {} }} />
+        </div>
         <div className="px-4 pb-12 sm:px-6">
           <div className="mt-4">
             <h1 className="text-xl font-bold text-zinc-900 sm:text-2xl">{data.title}</h1>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {data.genres.map((g) => (
-                <span key={g} className="rounded-full bg-zinc-700/80 px-2.5 py-0.5 text-[11px] font-medium text-white">{g}</span>
+                <span key={g} className="text-sm text-zinc-500">{g}</span>
               ))}
+              <span className="text-zinc-300">·</span>
               <span className="text-sm text-zinc-500">{data.year}</span>
-              <span className="text-sm text-zinc-500">·</span>
-              <span className="rounded-full bg-zinc-700/80 px-2.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-none">{formatViews(data.views)}</span>
-              <span className="text-sm text-zinc-500">·</span>
-              <span className="rounded-full bg-zinc-700/80 px-2.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-none">
-                ★ {displayRating > 0 ? `${displayRating}/10` : '0/10'}
-              </span>
+              <span className="text-zinc-300">·</span>
+              <span className="text-sm text-zinc-500">{formatViews(data.views)}</span>
+              <span className="text-zinc-300">·</span>
+              <span className="text-sm font-semibold text-zinc-500">★ {displayRating > 0 ? `${displayRating}/10` : '0/10'}</span>
             </div>
             <div className="mt-4">
               <p className="text-sm text-zinc-600 leading-relaxed">{showFullDescription ? data.fullDescription : shortDesc}</p>
@@ -257,12 +263,11 @@ export default function PlayPage({ data, onBack }: {
             </div>
           </div>
 
-          {/* Оценка — исчезает после голоса */}
-          {ratingVisible && !hasRated && (
+          {/* Оценка */}
+          {!ratedLoading && !hasRated && loggedIn && (
             <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-4">
               <h3 className="text-sm font-semibold text-zinc-800">Ваша оценка</h3>
-              {!loggedIn && <p className="text-[11px] text-zinc-400 mt-0.5">Войдите в аккаунт чтобы оценить</p>}
-              <div className="mt-2"><UserRating rating={userRating} onRate={handleRate} rated={hasRated} /></div>
+              <div className="mt-2"><UserRating rating={userRating} onRate={handleRate} rated={false} /></div>
             </div>
           )}
 

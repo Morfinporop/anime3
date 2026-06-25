@@ -425,6 +425,27 @@ router.post('/comments/:id/like', requireAuth, async (req, res) => {
 });
 
 // ================== RATINGS ==================
+router.get('/anime/:id/rating', requireAuth, async (req, res) => {
+  try {
+    const animeId = Number(req.params.id);
+    const userId = req.user!.id;
+
+    const [avgRes, userRes] = await Promise.all([
+      query(`SELECT COALESCE(AVG(score), 0) as avg, COUNT(*) as count FROM ratings WHERE anime_id = $1`, [animeId]),
+      query(`SELECT score FROM ratings WHERE anime_id = $1 AND user_id = $2`, [animeId, userId]),
+    ]);
+
+    res.json({
+      average: Math.round(Number(avgRes.rows[0].avg) * 10) / 10,
+      count: Number(avgRes.rows[0].count),
+      userScore: userRes.rows[0]?.score || null,
+    });
+  } catch (err: any) {
+    console.error('[get rating]', err.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
 router.post('/anime/:id/rate', requireAuth, async (req, res) => {
   try {
     const { score } = req.body;
