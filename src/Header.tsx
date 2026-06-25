@@ -202,7 +202,6 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
               className="mt-0.5 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-sm outline-none focus:border-zinc-400" />
           </div>
         </div>
-        <p className="text-xs text-zinc-400">ID#{user?.id}</p>
         <hr className="border-zinc-100" />
         <div>
           <label className="text-xs font-medium text-zinc-600">Старый пароль</label>
@@ -342,8 +341,8 @@ export default function Header({ onSelectAnime }: { onSelectAnime?: (anime: any)
               <div className="relative">
                 <button onClick={() => setMenuOpen(!menuOpen)}
                   className="flex items-center gap-2 rounded-full border border-zinc-200 bg-transparent pl-1.5 pr-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 transition-colors">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold text-white" style={{ backgroundColor: user.color }}>
-                    {user.nickname.charAt(0).toUpperCase()}
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold text-white overflow-hidden" style={user.avatarData ? {} : { backgroundColor: user.color }}>
+                    {user.avatarData ? <img src={user.avatarData} alt="" className="h-full w-full object-cover" /> : user.nickname.charAt(0).toUpperCase()}
                   </div>
                   <span className="max-w-[100px] truncate">{user.nickname}</span>
                 </button>

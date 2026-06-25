@@ -56,9 +56,9 @@ function CommentItem({ comment, onLike, onReply, onDelete, user, currentUserId }
   return (
     <div className="border-b border-zinc-100 pb-3 last:border-0">
       <div className="flex items-start gap-2">
-        <div className="h-8 w-8 flex-shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
-          style={{ backgroundColor: comment.avatarColor || '#6366f1' }}>
-          {comment.author.charAt(0).toUpperCase()}
+        <div className="h-8 w-8 flex-shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold text-white overflow-hidden"
+          style={(comment as any).avatarData ? {} : { backgroundColor: comment.avatarColor || '#6366f1' }}>
+          {(comment as any).avatarData ? <img src={(comment as any).avatarData} alt="" className="h-full w-full object-cover" /> : comment.author.charAt(0).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -104,8 +104,9 @@ function CommentItem({ comment, onLike, onReply, onDelete, user, currentUserId }
                     return (
                       <div key={reply.id} className="mb-2 last:mb-0">
                         <div className="flex items-center gap-2">
-                          <div className="h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
-                            style={{ backgroundColor: reply.avatarColor || '#6366f1' }}>{reply.author.charAt(0)}</div>
+                        <div className="h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white overflow-hidden"
+                          style={(reply as any).avatarData ? {} : { backgroundColor: reply.avatarColor || '#6366f1' }}>
+                          {(reply as any).avatarData ? <img src={(reply as any).avatarData} alt="" className="h-full w-full object-cover" /> : reply.author.charAt(0)}</div>
                           <span className="text-xs font-semibold text-zinc-700">{reply.author}</span>
                           <span className="text-[10px] text-zinc-400">{reply.date}</span>
                           {(replyIsAdmin || replyIsOwner) && onDelete && (

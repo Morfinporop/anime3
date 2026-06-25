@@ -277,99 +277,87 @@ router.post('/anime', requireAuth, requireUploadPermission, async (req, res) => 
     fs.writeFileSync(inputPath, videoBuffer);
 
     sseEvent(res, 'progress', { stage: 'decode', percent: 30, text: 'Видео распаковано, размер: ' + (videoBuffer.length / 1024 / 1024).toFixed(1) + ' МБ' });
+    const videoMimeVal = video.mime || 'video/mp4';
 
-    // Compress with ffmpeg: create HLS output with multiple qualities
+    // Try ffmpeg, fallback to raw save
     const outputDir = path.join(tmpDir, 'hls');
-    fs.mkdirSync(outputDir);
+    let useHLS = false;
 
-    sseEvent(res, 'progress', { stage: 'compress', percent: 35, text: 'Запуск компрессии FFmpeg...' });
+    try {
+      fs.mkdirSync(outputDir);
+      sseEvent(res, 'progress', { stage: 'compress', percent: 35, text: 'Запуск компрессии FFmpeg...' });
 
-    // Build ffmpeg command for 2 quality levels (1080p + 144p) to HLS
-    const masterPath = path.join(outputDir, 'master.m3u8');
-    const args = [
-      '-y',
-      '-i', inputPath,
-      '-preset', 'ultrafast',
-      '-crf', '28',
-      '-max_muxing_queue_size', '1024',
-      '-map', '0:v', '-map', '0:a',
-      '-s:v:0', '1920x1080', '-b:v:0', '2000k',
-      '-map', '0:v', '-map', '0:a',
-      '-s:v:1', '256x144', '-b:v:1', '150k',
-      '-f', 'hls',
-      '-hls_time', '6',
-      '-hls_playlist_type', 'vod',
-      '-hls_segment_filename', path.join(outputDir, 'q%d_%03d.ts'),
-      '-var_stream_map', 'v:0,a:0 v:1,a:1',
-      path.join(outputDir, 'q%d.m3u8'),
-    ];
+      const args = [
+        '-y', '-i', inputPath, '-preset', 'ultrafast', '-crf', '28',
+        '-max_muxing_queue_size', '1024',
+        '-map', '0:v', '-map', '0:a', '-s:v:0', '1920x1080', '-b:v:0', '2000k',
+        '-map', '0:v', '-map', '0:a', '-s:v:1', '256x144', '-b:v:1', '150k',
+        '-f', 'hls', '-hls_time', '6', '-hls_playlist_type', 'vod',
+        '-hls_segment_filename', path.join(outputDir, 'q%d_%03d.ts'),
+        '-var_stream_map', 'v:0,a:0 v:1,a:1',
+        path.join(outputDir, 'q%d.m3u8'),
+      ];
 
-    // Spawn ffmpeg
-    const ffmpeg = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    let lastPercent = 35;
+      const ffmpeg = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      let lastPercent = 35;
+      let stderrLog = '';
 
-    ffmpeg.stderr.on('data', (chunk: Buffer) => {
-      const text = chunk.toString();
-      // Parse ffmpeg time progress
-      const timeMatch = text.match(/time=(\d+):(\d+):(\d+\.\d+)/);
-      if (timeMatch) {
-        const hours = parseInt(timeMatch[1]);
-        const minutes = parseInt(timeMatch[2]);
-        const seconds = parseFloat(timeMatch[3]);
-        const totalSec = hours * 3600 + minutes * 60 + seconds;
-        // Estimate progress based on video duration (roughly 3s per second of video = 33% of ffmpeg phase)
-        const newPercent = 35 + Math.min(55, Math.round(totalSec * 2));
-        if (newPercent > lastPercent) {
-          lastPercent = newPercent;
-          sseEvent(res, 'progress', { stage: 'compress', percent: Math.min(90, lastPercent), text: 'Компрессия: ' + formatFFTime(hours, minutes, Math.floor(seconds)) });
+      ffmpeg.stderr.on('data', (chunk: Buffer) => {
+        const text = chunk.toString();
+        stderrLog += text;
+        const timeMatch = text.match(/time=(\d+):(\d+):(\d+\.\d+)/);
+        if (timeMatch) {
+          const hh = parseInt(timeMatch[1]), mm = parseInt(timeMatch[2]), ss = parseFloat(timeMatch[3]);
+          const newPercent = 35 + Math.min(55, Math.round((hh * 3600 + mm * 60 + ss) * 2));
+          if (newPercent > lastPercent) {
+            lastPercent = newPercent;
+            sseEvent(res, 'progress', { stage: 'compress', percent: Math.min(90, lastPercent), text: 'Компрессия: ' + formatFFTime(hh, mm, Math.floor(ss)) });
+          }
         }
-      }
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      ffmpeg.on('close', (code) => {
-        if (code === 0) resolve();
-        else reject(new Error('FFmpeg exit code: ' + code));
       });
-      ffmpeg.on('error', reject);
-    });
 
-    sseEvent(res, 'progress', { stage: 'compress', percent: 90, text: 'Компрессия завершена, сохранение в БД...' });
+      await new Promise<void>((resolve, reject) => {
+        ffmpeg.on('close', (code) => code === 0 ? resolve() : reject(new Error('FFmpeg code ' + code + ': ' + stderrLog.slice(-200))));
+        ffmpeg.on('error', (e) => reject(new Error('FFmpeg spawn: ' + e.message)));
+      });
 
-    // Read master playlist + all ts segments + sub-playlists
-    const files = fs.readdirSync(outputDir);
-    const dbFiles: { name: string; data: Buffer; mime: string }[] = [];
-    for (const f of files) {
-      dbFiles.push({
-        name: f,
-        data: fs.readFileSync(path.join(outputDir, f)),
+      sseEvent(res, 'progress', { stage: 'compress', percent: 90, text: 'Компрессия завершена, сохранение...' });
+
+      const files = fs.readdirSync(outputDir);
+      const dbFiles = files.map(f => ({
+        name: f, data: fs.readFileSync(path.join(outputDir, f)),
         mime: f.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp2t',
-      });
+      }));
+      const segmentsJson = dbFiles.map(f => ({ name: f.name, data: f.data.toString('base64'), mime: f.mime }));
+      useHLS = true;
+
+      sseEvent(res, 'progress', { stage: 'save', percent: 93, text: 'Сохранение в БД...' });
+
+      const { rows: insRows } = await query(
+        `INSERT INTO anime (title, description, year, genres, studio, poster_data, poster_mime, hls_segments, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+        [title, description || '', Number(year) || new Date().getFullYear(), genresArray, (studio || '').trim(), posterData, posterMime, JSON.stringify(segmentsJson), req.user!.id]
+      );
+
+      try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
+      sseEvent(res, 'progress', { stage: 'done', percent: 100, text: 'Готово! (HLS)' });
+      sseEvent(res, 'complete', { id: insRows[0].id });
+      res.end();
+    } catch (ffErr: any) {
+      console.error('[ffmpeg failed, fallback to mp4]', ffErr.message);
+      // Fallback: save as raw MP4
+      sseEvent(res, 'progress', { stage: 'save', percent: 80, text: 'Сохранение без сжатия (MP4)...' });
+      const videoBuf = fs.readFileSync(inputPath);
+      const { rows: insRows } = await query(
+        `INSERT INTO anime (title, description, year, genres, studio, poster_data, poster_mime, video_data, video_mime, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+        [title, description || '', Number(year) || new Date().getFullYear(), genresArray, (studio || '').trim(), posterData, posterMime, videoBuf, videoMimeVal, req.user!.id]
+      );
+      try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
+      sseEvent(res, 'progress', { stage: 'done', percent: 100, text: 'Готово! (MP4)' });
+      sseEvent(res, 'complete', { id: insRows[0].id });
+      res.end();
     }
-
-    sseEvent(res, 'progress', { stage: 'save', percent: 93, text: 'Сохранение в базу данных...' });
-
-    // Store everything: poster, master playlist, segments
-    const segmentsJson = dbFiles.map(f => ({ name: f.name, data: f.data.toString('base64'), mime: f.mime }));
-
-    const { rows } = await query(
-      `INSERT INTO anime (title, description, year, genres, studio, poster_data, poster_mime, hls_segments, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING id`,
-      [title, description || '', Number(year) || new Date().getFullYear(), genresArray, (studio || '').trim(), posterData, posterMime, JSON.stringify(segmentsJson), req.user!.id]
-    );
-
-    // Cleanup temp
-    try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
-
-    sseEvent(res, 'progress', { stage: 'done', percent: 100, text: 'Готово!' });
-    sseEvent(res, 'complete', { id: rows[0].id });
-    res.end();
-  } catch (err: any) {
-    console.error('[create anime]', err.message);
-    sseEvent(res, 'error', { error: err.message || 'Ошибка сервера' });
-    res.end();
-  }
 });
 
 router.put('/anime/:id/pin', requireAuth, requireAdmin, async (req, res) => {
