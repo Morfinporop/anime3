@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { query, checkHealth } from './db.js';
+import { query, checkHealth } from './db.ts';
 import {
   hashPassword, verifyPassword, signToken, getRandomAvatarColor,
   requireAuth, requireAdmin, requireUploadPermission, optionalAuth,
   type UserPayload,
-} from './auth.js';
+} from './auth.ts';
 
 export const router = Router();
 

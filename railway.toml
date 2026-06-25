@@ -2,10 +2,6 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "npm run start:prod"
+startCommand = "npx tsx server/index.ts"
 healthcheckPath = "/api/health"
-healthcheckTimeout = 30
-restartPolicyMaxRetries = 5
-
-[service]
-port = 3000
+healthcheckTimeout = 60
